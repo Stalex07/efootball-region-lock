@@ -5,7 +5,8 @@
 <h1 align="center">eFootball Region Lock</h1>
 
 <p align="center">
-  <b>Juega tus partidos online de eFootball en servidores cercanos a ti, vivas donde vivas.</b>
+  <b>Bloquea los servidores de partido de eFootball que están lejos de ti, para que tus partidos online se jueguen en los servidores más cercanos.</b><br>
+  Funciona en cualquier país: mide tu propio ping y decide por ti.
 </p>
 
 <p align="center">
@@ -26,7 +27,7 @@
 
 - [El problema](#el-problema)
 - [Cómo funciona](#cómo-funciona)
-- [Uso rápido](#uso-rápido)
+- [Tutorial paso a paso](#tutorial-paso-a-paso)
 - [Qué nunca se bloquea](#qué-nunca-se-bloquea)
 - [Línea de comandos](#línea-de-comandos)
 - [Ten en cuenta](#ten-en-cuenta)
@@ -62,18 +63,41 @@ Listas oficiales de IP:
 [Google Cloud](https://www.gstatic.com/ipranges/cloud.json) ·
 [Amazon Web Services](https://ip-ranges.amazonaws.com/ip-ranges.json)
 
-## Uso rápido
+## Tutorial paso a paso
 
-1. Descarga la última versión: botón verde **Code** → **Download ZIP**, y descomprímelo.
-2. Haz doble clic en **`Run.bat`** y acepta el aviso de administrador.
-3. Elige **1. Simular**. Te muestra tu ping a cada región y qué se bloquearía, **sin cambiar nada**.
-4. Si te parece bien, elige **2. Aplicar**, o **3** para poner tus propios límites (por ejemplo 80 ms y 3 servidores).
-5. Juega unos partidos. Si te salen errores de conexión o tarda muchísimo en emparejar, elige **5. Quitar todo**.
+No necesitas saber programar. Tarda unos 3 minutos.
 
 > [!WARNING]
-> No apliques ni quites las reglas durante un partido. Hazlo desde los menús del juego.
+> No apliques ni quites las reglas durante un partido. Cierra el juego o quédate en los menús.
 
-Ejemplo de resultado para un jugador en Lima, Perú:
+### 1. Descargar
+
+En esta página, haz clic en el botón verde **Code** → **Download ZIP**. Descomprime el ZIP en cualquier carpeta (por ejemplo, el Escritorio).
+
+### 2. Abrir el menú
+
+Haz doble clic en **`Run.bat`**. Windows te pide permiso de administrador: pulsa **Sí**. Verás este menú:
+
+```text
+  ==========================================
+    eFootball Region Lock
+  ==========================================
+
+  1. Simulate (measure only, change nothing)  / Simular
+  2. Apply (max 100 ms, 4 servers)            / Aplicar
+  3. Apply with custom settings               / Aplicar personalizado
+  4. Status                                   / Estado
+  5. Remove all rules                         / Quitar todo
+  6. Exit                                     / Salir
+```
+
+> Si Windows muestra "Windows protegió su PC", haz clic en **Más información** → **Ejecutar de todas formas**. Aparece porque el archivo se descargó de internet.
+
+### 3. Primero simula (opción 1)
+
+Pulsa **1**. La herramienta encuentra tu juego, mide tu ping a unas 85 regiones de servidores (1-2 minutos) y muestra una tabla con lo que se **mantiene** y lo que se **bloquearía**. **Todavía no cambia nada.**
+
+Ejemplo para un jugador en Lima, Perú:
 
 ```text
 Servidores de partido que se mantienen:
@@ -84,6 +108,19 @@ Servidores de partido que se mantienen:
 
 Regiones a bloquear: 72  |  Rangos de IP: 3966
 ```
+
+### 4. Aplicar (opción 2 o 3)
+
+- **2** mantiene las regiones con menos de **100 ms**, máximo **4**.
+- **3** te deja elegir, por ejemplo **80** ms y **3** servidores.
+
+La herramienta vuelve a medir, muestra la tabla y pide confirmación. Escribe **S** y pulsa Enter. Cuando diga **Listo**, los servidores lejanos quedan bloqueados.
+
+### 5. Jugar y comprobar
+
+Juega unos partidos. La opción **4. Estado** te muestra las reglas activas en cualquier momento.
+
+Si te salen errores de conexión o tarda mucho más de lo normal en emparejar, abre el menú y elige **5. Quitar todo**. Todo vuelve a la normalidad al instante.
 
 ## Qué nunca se bloquea
 

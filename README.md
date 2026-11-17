@@ -5,7 +5,8 @@
 <h1 align="center">eFootball Region Lock</h1>
 
 <p align="center">
-  <b>Play your eFootball online matches on servers close to you, wherever you live.</b>
+  <b>Blocks far-away eFootball match servers, so your online matches are played on the servers closest to you.</b><br>
+  Works anywhere in the world: it measures your own ping and decides for you.
 </p>
 
 <p align="center">
@@ -26,7 +27,7 @@
 
 - [The problem](#the-problem)
 - [How it works](#how-it-works)
-- [Quick start](#quick-start)
+- [Step-by-step tutorial](#step-by-step-tutorial)
 - [What is never blocked](#what-is-never-blocked)
 - [Command line](#command-line)
 - [Things to know](#things-to-know)
@@ -62,18 +63,41 @@ Official IP lists:
 [Google Cloud](https://www.gstatic.com/ipranges/cloud.json) ·
 [Amazon Web Services](https://ip-ranges.amazonaws.com/ip-ranges.json)
 
-## Quick start
+## Step-by-step tutorial
 
-1. Download the latest version: green **Code** button → **Download ZIP**, then extract it.
-2. Double-click **`Run.bat`** and accept the administrator prompt.
-3. Choose **1. Simulate**. It shows your ping to every region and what would be blocked, **without changing anything**.
-4. If it looks right, choose **2. Apply**, or **3** to pick your own limits (for example 80 ms and 3 servers).
-5. Play a few matches. If you get connection errors or matchmaking takes forever, choose **5. Remove all rules**.
+No programming needed. It takes about 3 minutes.
 
 > [!WARNING]
-> Do not apply or remove the rules during a match. Do it from the game menus.
+> Do not apply or remove the rules during a match. Close the game or stay in its menus.
 
-Example result for a player in Lima, Peru:
+### 1. Download
+
+On this page, click the green **Code** button → **Download ZIP**. Extract the ZIP to any folder (for example your Desktop).
+
+### 2. Open the menu
+
+Double-click **`Run.bat`**. Windows asks for administrator permission: click **Yes**. You will see this menu:
+
+```text
+  ==========================================
+    eFootball Region Lock
+  ==========================================
+
+  1. Simulate (measure only, change nothing)  / Simular
+  2. Apply (max 100 ms, 4 servers)            / Aplicar
+  3. Apply with custom settings               / Aplicar personalizado
+  4. Status                                   / Estado
+  5. Remove all rules                         / Quitar todo
+  6. Exit                                     / Salir
+```
+
+> If Windows shows "Windows protected your PC", click **More info** → **Run anyway**. It appears because the file was downloaded from the internet.
+
+### 3. Simulate first (option 1)
+
+Press **1**. The tool finds your game, measures your ping to about 85 server regions (1-2 minutes) and shows a table with what would be **kept** and what would be **blocked**. **Nothing is changed yet.**
+
+Example for a player in Lima, Peru:
 
 ```text
 Match servers you will keep:
@@ -84,6 +108,19 @@ Match servers you will keep:
 
 Regions to block: 72  |  IP ranges: 3966
 ```
+
+### 4. Apply (option 2 or 3)
+
+- **2** keeps the regions under **100 ms**, at most **4**.
+- **3** lets you choose, for example **80** ms and **3** servers.
+
+The tool measures again, shows the table and asks for confirmation. Type **Y** (or **S**) and press Enter. When it says **Done**, the far servers are blocked.
+
+### 5. Play and check
+
+Play a few matches. Option **4. Status** shows the active rules at any time.
+
+If you get connection errors or matchmaking takes much longer than usual, open the menu and choose **5. Remove all rules**. Everything goes back to normal immediately.
 
 ## What is never blocked
 
