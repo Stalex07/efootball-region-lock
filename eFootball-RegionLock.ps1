@@ -42,6 +42,10 @@
 .PARAMETER AlwaysAllow
     Region codes that must never be blocked, e.g. southamerica-east1, sa-east-1.
 
+.PARAMETER AskSettings
+    Ask for MaxPing and MaxServers interactively (used by Run.bat option 3).
+    Only whole numbers inside the allowed range are accepted.
+
 .EXAMPLE
     .\eFootball-RegionLock.ps1 -Mode DryRun
 
@@ -72,15 +76,18 @@ param(
     [ValidateSet('auto', 'en', 'es')]
     [string]$Lang = 'auto',
 
+    [switch]$AskSettings,
+
     [switch]$Yes
 )
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ToolVersion  = '1.1.0'
+$ToolVersion  = '1.2.0'
 $Credit       = 'Powered by @mrstalex'
 $RuleGroup    = 'eFootball Region Lock'
+$RuleTag      = 'Created by eFootball Region Lock'   # every rule we create starts its description with this
 $ChunkSize    = 400
 $ProtectedAws = @('ap-northeast-1', 'us-west-2', 'eu-west-1')
 
@@ -203,7 +210,55 @@ function Find-GamePackages {
     $list
 }
 
-function Measure-Http([System.Net.Http.HttpClient]$Client, [string]$Url, [int]$Samples = 4) {
+function Read-IntSetting([string]$En, [string]$Es, [int]$Default, [int]$Min, [int]$Max) {
+    # Only whole numbers inside [Min, Max] are accepted; anything else is asked again.
+    while ($true) {
+        $raw = Read-Host ("{0} [{1}]" -f (T $En $Es), $Default)
+        if ([string]::IsNullOrWhiteSpace($raw)) { return $Default }
+        $raw = $raw.Trim()
+        if ($raw -match '^\d{1,3}$') {
+            $n = [int]$raw
+            if ($n -ge $Min -and $n -le $Max) { return $n }
+        }
+        Say ("Please type a whole number between {0} and {1}." -f $Min, $Max) ("Escribe un numero entero entre {0} y {1}." -f $Min, $Max) 'Yellow'
+    }
+}
+
+function Test-Cidr([string]$Cidr) {
+    if ([string]::IsNullOrWhiteSpace($Cidr)) { return $false }
+    $parts = $Cidr.Split('/')
+    if ($parts.Count -ne 2) { return $false }
+    $addr = $null
+    if (-not [Net.IPAddress]::TryParse($parts[0], [ref]$addr)) { return $false }
+    $len = 0
+    if (-not [int]::TryParse($parts[1], [ref]$len)) { return $false }
+    $max = 32
+    if ($addr.AddressFamily -eq 'InterNetworkV6') { $max = 128 }
+    ($len -ge 0 -and $len -le $max)
+}
+
+function Test-ProbeUrl([string]$Url) {
+    # gcping endpoints are Cloud Run services: only https://<name>.a.run.app is accepted.
+    $u = $null
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$u)) { return $false }
+    ($u.Scheme -eq 'https') -and ($u.Host -match '^[a-z0-9-]+\.a\.run\.app$') -and ($u.AbsolutePath -eq '/')
+}
+
+function Get-Stats([double[]]$Values) {
+    # Median = typical latency. Jitter = average change between consecutive samples.
+    if ($Values.Count -lt 3) { return $null }
+    $sorted = @($Values | Sort-Object)
+    $mid = [int][math]::Floor($sorted.Count / 2)
+    if ($sorted.Count % 2 -eq 1) { $median = $sorted[$mid] } else { $median = ($sorted[$mid - 1] + $sorted[$mid]) / 2 }
+    $diff = 0.0
+    for ($i = 1; $i -lt $Values.Count; $i++) { $diff += [math]::Abs($Values[$i] - $Values[$i - 1]) }
+    [pscustomobject]@{
+        Median = [int][math]::Round($median)
+        Jitter = [int][math]::Round($diff / ($Values.Count - 1))
+    }
+}
+
+function Measure-Http([System.Net.Http.HttpClient]$Client, [string]$Url, [int]$Samples = 6) {
     # The first request pays for DNS + TLS, so it is discarded.
     $vals = @()
     for ($i = 0; $i -lt $Samples; $i++) {
@@ -218,10 +273,10 @@ function Measure-Http([System.Net.Http.HttpClient]$Client, [string]$Url, [int]$S
             }
         } catch { $sw.Stop() }
     }
-    if ($vals.Count -gt 0) { [int][math]::Round(($vals | Measure-Object -Minimum).Minimum) } else { $null }
+    Get-Stats $vals
 }
 
-function Measure-Tcp([string]$HostName, [int]$Port = 443, [int]$Samples = 3) {
+function Measure-Tcp([string]$HostName, [int]$Port = 443, [int]$Samples = 5) {
     try {
         $ip = [Net.Dns]::GetHostAddresses($HostName) | Where-Object { $_.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
     } catch { return $null }
@@ -236,11 +291,21 @@ function Measure-Tcp([string]$HostName, [int]$Port = 443, [int]$Samples = 3) {
             if ($ok -and $tc.Connected) { $vals += $sw.Elapsed.TotalMilliseconds }
         } catch { $sw.Stop() } finally { $tc.Close() }
     }
-    if ($vals.Count -gt 0) { [int][math]::Round(($vals | Measure-Object -Minimum).Minimum) } else { $null }
+    Get-Stats $vals
+}
+
+function Get-Stability($Jitter) {
+    if ($null -eq $Jitter) { return '-' }
+    if ($Jitter -le 10) { return (T 'High' 'Alta') }
+    if ($Jitter -le 30) { return (T 'Medium' 'Media') }
+    T 'Low' 'Baja'
 }
 
 function Get-ToolRules {
-    @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue)
+    # Only rules this tool created: right group, right name AND our description tag.
+    # A rule someone else puts in the same group is never touched.
+    @(Get-NetFirewallRule -Group $RuleGroup -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -like "$RuleGroup #*" -and $_.Description -like "$RuleTag*" })
 }
 
 function Remove-ToolRules {
@@ -317,6 +382,13 @@ if ($Mode -eq 'Remove') {
     exit 0
 }
 
+# --- interactive settings (Run.bat option 3): validated here, never passed through CMD
+if ($AskSettings) {
+    $MaxPing    = Read-IntSetting 'Max latency in ms (10-500)' 'Latencia maxima en ms (10-500)' $MaxPing 10 500
+    $MaxServers = Read-IntSetting 'Max servers to keep, 0 = no limit (0-50)' 'Maximo de servidores, 0 = sin limite (0-50)' $MaxServers 0 50
+    Write-Host ''
+}
+
 # --- game executable
 if ($GamePath) {
     $exes = @()
@@ -360,10 +432,22 @@ try {
     exit 1
 }
 
-# --- regions to measure
-$gcpRegions = @($gcp.prefixes | ForEach-Object { $_.scope } | Where-Object { $_ -and $_ -ne 'global' } | Sort-Object -Unique)
+# --- sanity checks: refuse to continue with incomplete or malformed lists
+$gcpCount = @($gcp.prefixes).Count
+$awsCount = @($aws.prefixes).Count
+$probeCount = @($gcpProbes.PSObject.Properties).Count
+if ($gcpCount -lt 100 -or $awsCount -lt 500 -or $probeCount -lt 10) {
+    Say ("The downloaded lists look incomplete (Google: {0}, Amazon: {1}, probes: {2}). Nothing was changed." -f $gcpCount, $awsCount, $probeCount) `
+        ("Las listas descargadas parecen incompletas (Google: {0}, Amazon: {1}, puntos de prueba: {2}). No se cambio nada." -f $gcpCount, $awsCount, $probeCount) 'Red'
+    exit 1
+}
+
+# --- regions to measure (only well-formed region codes)
+$regionPattern = '^[a-z0-9-]+$'
+$gcpRegions = @($gcp.prefixes | ForEach-Object { $_.scope } |
+    Where-Object { $_ -and $_ -ne 'global' -and $_ -cmatch $regionPattern } | Sort-Object -Unique)
 $awsRegions = @($aws.prefixes |
-    Where-Object { $_.service -eq 'EC2' -and $_.region -eq $_.network_border_group -and $_.region -ne 'GLOBAL' -and $_.region -notlike 'cn-*' -and $_.region -notlike 'us-gov-*' } |
+    Where-Object { $_.service -eq 'EC2' -and $_.region -eq $_.network_border_group -and $_.region -cmatch $regionPattern -and $_.region -notlike 'cn-*' -and $_.region -notlike 'us-gov-*' } |
     ForEach-Object { $_.region } | Sort-Object -Unique)
 
 Add-Type -AssemblyName System.Net.Http
@@ -373,26 +457,31 @@ $http.Timeout = [TimeSpan]::FromSeconds(5)
 $results = New-Object System.Collections.Generic.List[object]
 $total = $gcpRegions.Count + $awsRegions.Count
 $done = 0
-Say ("Measuring latency to {0} regions (about 1-2 minutes)..." -f $total) ("Midiendo la latencia a {0} regiones (1-2 minutos aprox.)..." -f $total)
+Say ("Measuring latency to {0} regions, 5 samples each (about 2-3 minutes)..." -f $total) ("Midiendo la latencia a {0} regiones, 5 muestras cada una (2-3 minutos aprox.)..." -f $total)
+
+function New-Result($Provider, $Region, $Location, $Stats) {
+    $ping = $null; $jit = $null
+    if ($Stats) { $ping = $Stats.Median; $jit = $Stats.Jitter }
+    [pscustomobject]@{ Provider = $Provider; Region = $Region; Location = $Location; Ping = $ping; Jitter = $jit }
+}
 
 foreach ($r in $gcpRegions) {
     $done++
     Write-Progress -Activity 'eFootball Region Lock' -Status "Google Cloud: $r" -PercentComplete ([int](100 * $done / $total))
     $probe = $gcpProbes.PSObject.Properties[$r]
-    $ping = $null; $loc = ''
-    if ($probe) {
-        $loc = $probe.Value.RegionName
-        $ping = Measure-Http $http ($probe.Value.URL + '/api/ping')
+    $stats = $null; $loc = ''
+    if ($probe -and (Test-ProbeUrl $probe.Value.URL)) {
+        $loc = [string]$probe.Value.RegionName
+        $stats = Measure-Http $http ($probe.Value.URL.TrimEnd('/') + '/api/ping')
     }
-    $results.Add([pscustomobject]@{ Provider = 'Google'; Region = $r; Location = $loc; Ping = $ping })
+    $results.Add((New-Result 'Google' $r $loc $stats))
 }
 foreach ($r in $awsRegions) {
     $done++
     Write-Progress -Activity 'eFootball Region Lock' -Status "Amazon: $r" -PercentComplete ([int](100 * $done / $total))
     $loc = ''
     if ($AwsNames.ContainsKey($r)) { $loc = $AwsNames[$r] }
-    $ping = Measure-Tcp "ec2.$r.amazonaws.com"
-    $results.Add([pscustomobject]@{ Provider = 'Amazon'; Region = $r; Location = $loc; Ping = $ping })
+    $results.Add((New-Result 'Amazon' $r $loc (Measure-Tcp "ec2.$r.amazonaws.com")))
 }
 Write-Progress -Activity 'eFootball Region Lock' -Completed
 $http.Dispose()
@@ -430,8 +519,13 @@ $results | Sort-Object @{ Expression = { if ($null -eq $_.Ping) { 99999 } else {
     Format-Table @{ Label = (T 'Cloud' 'Nube'); Expression = { $_.Provider } },
                  @{ Label = (T 'Region' 'Region'); Expression = { $_.Region } },
                  @{ Label = (T 'Location' 'Ubicacion'); Expression = { $_.Location } },
-                 @{ Label = 'Ping (ms)'; Expression = { if ($null -eq $_.Ping) { '-' } else { $_.Ping } }; Align = 'Right' },
+                 @{ Label = (T 'Latency est. (ms)' 'Latencia est. (ms)'); Expression = { if ($null -eq $_.Ping) { '-' } else { $_.Ping } }; Align = 'Right' },
+                 @{ Label = 'Jitter (ms)'; Expression = { if ($null -eq $_.Jitter) { '-' } else { $_.Jitter } }; Align = 'Right' },
+                 @{ Label = (T 'Stability' 'Estabilidad'); Expression = { Get-Stability $_.Jitter } },
                  @{ Label = (T 'Decision' 'Decision'); Expression = { $_.Decision } } -AutoSize | Out-Host
+Say 'Latency is the median of 5 samples to each region''s test endpoint: an estimate, not the exact ping of a match.' `
+    'La latencia es la mediana de 5 muestras al punto de prueba de cada region: una estimacion, no el ping exacto de un partido.' 'DarkGray'
+Write-Host ''
 
 $close = @($results | Where-Object { $allowedKeys.Contains("$($_.Provider)/$($_.Region)") } | Sort-Object Ping)
 Say 'Match servers you will keep:' 'Servidores de partido que se mantienen:' 'Green'
@@ -442,19 +536,26 @@ $blockedGcp = @($results | Where-Object { $_.Blocked -and $_.Provider -eq 'Googl
 $blockedAws = @($results | Where-Object { $_.Blocked -and $_.Provider -eq 'Amazon' } | ForEach-Object { $_.Region })
 
 $ranges = New-Object 'System.Collections.Generic.HashSet[string]'
+$invalid = 0
+function Add-Range([string]$Cidr) {
+    if (Test-Cidr $Cidr) { [void]$script:ranges.Add($Cidr) } else { $script:invalid++ }
+}
 foreach ($p in $gcp.prefixes) {
     if ($blockedGcp -contains $p.scope) {
-        if ($p.PSObject.Properties['ipv4Prefix']) { [void]$ranges.Add($p.ipv4Prefix) }
-        if ($p.PSObject.Properties['ipv6Prefix']) { [void]$ranges.Add($p.ipv6Prefix) }
+        if ($p.PSObject.Properties['ipv4Prefix']) { Add-Range $p.ipv4Prefix }
+        if ($p.PSObject.Properties['ipv6Prefix']) { Add-Range $p.ipv6Prefix }
     }
 }
 foreach ($p in $aws.prefixes) {
-    if ($p.service -eq 'EC2' -and $p.region -eq $p.network_border_group -and $blockedAws -contains $p.region) { [void]$ranges.Add($p.ip_prefix) }
+    if ($p.service -eq 'EC2' -and $p.region -eq $p.network_border_group -and $blockedAws -contains $p.region) { Add-Range $p.ip_prefix }
 }
 foreach ($p in $aws.ipv6_prefixes) {
-    if ($p.service -eq 'EC2' -and $p.region -eq $p.network_border_group -and $blockedAws -contains $p.region) { [void]$ranges.Add($p.ipv6_prefix) }
+    if ($p.service -eq 'EC2' -and $p.region -eq $p.network_border_group -and $blockedAws -contains $p.region) { Add-Range $p.ipv6_prefix }
 }
 $rangeList = @($ranges | Sort-Object)
+if ($invalid -gt 0) {
+    Say ("Skipped {0} malformed IP range(s) from the downloaded lists." -f $invalid) ("Se ignoraron {0} rango(s) de IP mal formados en las listas descargadas." -f $invalid) 'Yellow'
+}
 
 Write-Host ''
 Say ("Regions to block: {0}  |  IP ranges: {1}" -f ($blockedGcp.Count + $blockedAws.Count), $rangeList.Count) `
@@ -485,25 +586,37 @@ if (-not $Yes) {
     }
 }
 
-# --- apply
-$old = Remove-ToolRules
-if ($old -gt 0) { Say ("Replaced {0} previous rule(s)." -f $old) ("Se reemplazaron {0} regla(s) anteriores." -f $old) }
+# --- apply: create the new rules first, and only then remove the old ones.
+# If anything fails half-way, the new rules are rolled back and the old ones stay in place.
+$oldRules = Get-ToolRules
 
 $keepText = ($close | ForEach-Object { "$($_.Provider) $($_.Region) ($($_.Location), $($_.Ping) ms)" }) -join '; '
-$description = "Created by eFootball Region Lock v$ToolVersion on $(Get-Date -Format 'yyyy-MM-dd HH:mm'). " +
+$description = "$RuleTag v$ToolVersion on $(Get-Date -Format 'yyyy-MM-dd HH:mm'). " +
                "MaxPing=$MaxPing MaxServers=$MaxServers MinServers=$MinServers. Kept: $keepText"
 
-$created = 0
-foreach ($target in $targets) {
-    $part = 0
-    for ($i = 0; $i -lt $rangeList.Count; $i += $ChunkSize) {
-        $part++
-        $chunk = $rangeList[$i..([Math]::Min($i + $ChunkSize - 1, $rangeList.Count - 1))]
-        New-NetFirewallRule -DisplayName "$RuleGroup #$part" -Group $RuleGroup -Description $description `
-            -Direction Outbound -Action Block -Protocol UDP -RemoteAddress $chunk @target | Out-Null
-        $created++
+$newNames = New-Object System.Collections.Generic.List[string]
+try {
+    foreach ($target in $targets) {
+        $part = 0
+        for ($i = 0; $i -lt $rangeList.Count; $i += $ChunkSize) {
+            $part++
+            $chunk = $rangeList[$i..([Math]::Min($i + $ChunkSize - 1, $rangeList.Count - 1))]
+            $rule = New-NetFirewallRule -DisplayName "$RuleGroup #$part" -Group $RuleGroup -Description $description `
+                -Direction Outbound -Action Block -Protocol UDP -RemoteAddress $chunk @target
+            $newNames.Add($rule.Name)
+        }
     }
+} catch {
+    Say "Could not create the firewall rules: $($_.Exception.Message)" "No se pudieron crear las reglas de firewall: $($_.Exception.Message)" 'Red'
+    foreach ($n in $newNames) { Remove-NetFirewallRule -Name $n -ErrorAction SilentlyContinue }
+    Say 'The partial changes were undone. Your previous rules (if any) were kept.' 'Se deshicieron los cambios a medias. Tus reglas anteriores (si las habia) se mantienen.' 'Yellow'
+    exit 1
 }
+if ($oldRules.Count -gt 0) {
+    $oldRules | Remove-NetFirewallRule
+    Say ("Replaced {0} previous rule(s)." -f $oldRules.Count) ("Se reemplazaron {0} regla(s) anteriores." -f $oldRules.Count)
+}
+$created = $newNames.Count
 
 Write-Host ''
 Say ("Done: {0} rule(s) created, only for eFootball and only for UDP." -f $created) `

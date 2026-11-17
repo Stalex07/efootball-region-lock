@@ -51,11 +51,8 @@ pause
 goto menu
 
 :custom
-set "MAXPING=100"
-set "MAXSRV=4"
-set /p "MAXPING=  Max ping in ms / Ping maximo en ms [100]: "
-set /p "MAXSRV=  Max servers, 0 = no limit / Maximo de servidores, 0 = sin limite [4]: "
-%PS% -Mode Apply -MaxPing %MAXPING% -MaxServers %MAXSRV%
+rem The values are asked and validated inside PowerShell, never passed through CMD.
+%PS% -Mode Apply -AskSettings
 pause
 goto menu
 

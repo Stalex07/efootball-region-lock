@@ -36,7 +36,7 @@
 - [What to expect](#what-to-expect)
 - [What is never blocked](#what-is-never-blocked)
 - [Command line](#command-line)
-- [Things to know](#things-to-know)
+- [Known limitations](#known-limitations)
 - [Uninstall](#uninstall)
 - [FAQ](#faq)
 
@@ -64,7 +64,7 @@ eFootball's match servers run on **Google Cloud** and **Amazon Web Services**. B
 ```text
 1. Find the game         Steam and the Xbox app (Microsoft Store) are detected automatically
 2. Download IP lists     official lists from Google and Amazon
-3. Measure your ping     to every Google Cloud and AWS region (about 85, 1-2 minutes)
+3. Measure latency       to every Google Cloud and AWS region (about 85, 5 samples each, 2-3 minutes)
 4. Keep the closest      e.g. everything under 100 ms, up to 4 regions
 5. Block the rest        Windows Firewall, ONLY for eFootball, ONLY outbound UDP
 ```
@@ -77,6 +77,12 @@ How latency is measured:
 |---|---|
 | Google Cloud | HTTP round trip to the per-region test endpoints of [gcping](https://gcping.com), an open-source Google Cloud project |
 | Amazon Web Services | TCP connect time to the official regional endpoint `ec2.<region>.amazonaws.com` |
+
+Each region is measured **5 times**. The tool uses the **median** as the estimated latency and shows the **jitter** (how much the samples vary) as a stability rating: High, Medium or Low.
+
+These values are an **estimate per region**: they measure a test endpoint inside each cloud region, not the exact server of a future match (match server addresses change every match). Match servers run inside those same regions, so the estimate is close: in the author's tests, Santiago measured 38-40 ms with this method and 32-34 ms with a plain ping.
+
+Before using the lists, the tool checks that they are complete, that every IP range is well formed, and that every test endpoint is an `https://...a.run.app` address. If a check fails, nothing is changed.
 
 Official IP lists:
 [Google Cloud](https://www.gstatic.com/ipranges/cloud.json) ·
@@ -92,6 +98,14 @@ No programming needed. It takes about 3 minutes.
 ### 1. Download
 
 Go to the **[latest release](https://github.com/Stalex07/efootball-region-lock/releases/latest)** and download the `.zip` file under **Assets**. Extract it to any folder (for example your Desktop).
+
+Optional: check that the ZIP is the original. Open PowerShell in your Downloads folder and run:
+
+```powershell
+Get-FileHash .\eFootball-Region-Lock-v1.2.0.zip -Algorithm SHA256
+```
+
+The result must match the **SHA-256** shown in the release notes.
 
 ### 2. Open the menu
 
@@ -115,11 +129,11 @@ Double-click **`Run.bat`**. Windows asks for administrator permission: click **Y
   6. Exit                                     / Salir
 ```
 
-> If Windows shows "Windows protected your PC", click **More info** → **Run anyway**. It appears because the file was downloaded from the internet.
+> If Windows shows "Windows protected your PC", it is because the file is not digitally signed and was downloaded from the internet. Only continue (**More info** → **Run anyway**) if you downloaded it from this repository's Releases page, ideally after checking its SHA-256. You can also open `eFootball-RegionLock.ps1` with Notepad and read every line first.
 
 ### 3. Simulate first (option 1)
 
-Press **1**. The tool finds your game, measures your ping to about 85 server regions (1-2 minutes) and shows a table with what would be **kept** and what would be **blocked**. **Nothing is changed yet.**
+Press **1**. The tool finds your game, measures the latency to about 85 server regions (2-3 minutes) and shows a table with the estimated latency, jitter and stability of each region, and what would be **kept** or **blocked**. **Nothing is changed yet.**
 
 Example for a player in Lima, Peru:
 
@@ -136,7 +150,7 @@ Regions to block: 72  |  IP ranges: 3966
 ### 4. Apply (option 2 or 3)
 
 - **2** keeps the regions under **100 ms**, at most **4**.
-- **3** lets you choose, for example **80** ms and **3** servers.
+- **3** asks you for the limits, for example **80** ms and **3** servers. Only whole numbers in the allowed range are accepted.
 
 The tool measures again, shows the table and asks for confirmation. Type **Y** (or **S**) and press Enter. When it says **Done**, the far servers are blocked.
 
@@ -151,11 +165,11 @@ If you get connection errors or matchmaking takes much longer than usual, open t
 > [!IMPORTANT]
 > **Play on a wired (Ethernet) connection.** It is the single biggest improvement you can make: Wi-Fi adds delay spikes and packet loss that no tool can fix.
 
-**What the tool guarantees:** every Google Cloud and Amazon server region above your ping limit is blocked for eFootball (except the few listed in [What is never blocked](#what-is-never-blocked)). Your matches can no longer be played on a server on another continent, even when your opponent is far away.
+**What the tool does:** every Google Cloud and Amazon server region above your latency limit is blocked for eFootball (except the few listed in [What is never blocked](#what-is-never-blocked)). Matches can no longer be played on those blocked regions, even when your opponent is far away.
 
-**What it cannot control:** who your opponent is and how good their connection is.
+**What it cannot control:** who your opponent is, how good their connection is, peer-to-peer matches, and any server Konami runs outside the regions in the official lists (see [Known limitations](#known-limitations)).
 
-**So if a match still lags or disconnects** while you are on cable, nobody at home is downloading or streaming, and the match is on a nearby server, **the cause is very likely your opponent's connection** (bad Wi-Fi, downloads on their network, weak signal).
+**So if a match still lags or disconnects** while you are on cable, nobody at home is downloading or streaming, and the match is on a nearby server, **the most common cause is your opponent's connection** (bad Wi-Fi, downloads on their network, weak signal). Less often it can be a route problem at your internet provider or a busy server.
 
 Quick check of your side before blaming the opponent:
 
@@ -167,7 +181,7 @@ Quick check of your side before blaming the opponent:
 
 | What | Why |
 |---|---|
-| Amazon `ap-northeast-1` (Tokyo), `us-west-2` (Oregon), `eu-west-1` (Ireland) | eFootball's central services (login, matchmaking) run there |
+| Amazon `ap-northeast-1` (Tokyo), `us-west-2` (Oregon), `eu-west-1` (Ireland) | The game kept talking to these regions in every match of the author's tests (login, matchmaking, game services). They stay open so the game keeps working. Konami may change this in the future |
 | Amazon Local Zones and Global Accelerator addresses (`166.117.x.x`) | Anycast/edge addresses: their real location cannot be measured |
 | Google `global` services | Not tied to a country |
 | Any region the tool could not measure | Safety first |
@@ -198,21 +212,25 @@ Run these from an **administrator** PowerShell in the tool's folder. `DryRun` an
 | Parameter | Default | Meaning |
 |---|---|---|
 | `-Mode` | `Apply` | `Apply`, `DryRun`, `Remove` or `Status` |
-| `-MaxPing` | `100` | Highest ping (ms) a region may have to stay allowed |
+| `-MaxPing` | `100` | Highest estimated latency (ms) a region may have to stay allowed |
 | `-MaxServers` | `4` | Keep at most this many regions. `0` = no limit |
 | `-MinServers` | `2` | Always keep at least this many regions |
 | `-AlwaysAllow` | none | Region codes that must never be blocked |
 | `-GamePath` | auto | Path(s) to `eFootball.exe` |
 | `-Lang` | `auto` | Output language: `auto`, `en` or `es` |
+| `-AskSettings` | off | Ask for `-MaxPing` and `-MaxServers` on screen (whole numbers only) |
 | `-Yes` | off | Skip the confirmation prompt |
 
-## Things to know
+## Known limitations
 
-- **It cannot fix your opponent's connection.** If they play on bad Wi-Fi, the match can still feel bad.
+- **Latency is an estimate per region**, not the exact ping of a match. Google values are an HTTP round trip and usually read 5-15 ms higher than a plain ping, so leave some margin in `-MaxPing`.
+- **Peer-to-peer matches are not controlled.** Some matches (for example friend matches) can connect players directly instead of through a cloud server.
+- **Only servers inside the official Google Cloud and AWS lists are covered.** If Konami uses other infrastructure, it is not blocked.
+- **It cannot choose or fix your opponent.** If they play on bad Wi-Fi, the match can still feel bad.
 - **Matchmaking may take a little longer**, because opponents who would need a far server are filtered out. When the game cannot connect, it normally shows a connection error before kick-off and searches again.
-- **Google values read a bit high.** They are an HTTP round trip and usually show 5-15 ms more than a plain ping. Leave some margin in `-MaxPing`.
-- **Re-run it every few weeks.** Google and Amazon add new IP ranges over time. Applying again replaces the previous rules.
+- **IPv6:** IPv6 ranges are blocked too, but the tool has not yet been tested on a real IPv6-only connection.
 - **Microsoft Store / Xbox app version is experimental.** The tool looks for the game in the `XboxGames` folders and also adds a rule bound to the Store package. Feedback is welcome.
+- **Re-run it every few weeks.** Google and Amazon add new IP ranges over time. Applying again replaces the previous rules.
 - Konami does not document how server selection works, and its terms neither allow nor forbid firewall rules on your own PC.
 
 ## Uninstall
@@ -223,7 +241,7 @@ Open `Run.bat` → **5. Remove all rules**, or run as administrator:
 Remove-NetFirewallRule -Group "eFootball Region Lock"
 ```
 
-Every rule belongs to the firewall group `eFootball Region Lock`, so nothing else is touched.
+Every rule belongs to the firewall group `eFootball Region Lock`. The menu option only removes rules that carry the tool's own name and description, so rules created by anyone else are never touched.
 
 ## FAQ
 
