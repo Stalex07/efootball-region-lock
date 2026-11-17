@@ -20,11 +20,16 @@
   <b>English</b> · <a href="README.es.md">Español</a>
 </p>
 
+<p align="center">
+  Powered by <a href="https://www.instagram.com/mrstalex/"><b>@mrstalex</b></a> (IG)
+</p>
+
 > [!NOTE]
 > Unofficial community tool. Not affiliated with, endorsed by or supported by Konami. Use at your own risk.
 
 ## Contents
 
+- [Why this project exists](#why-this-project-exists)
 - [The problem](#the-problem)
 - [How it works](#how-it-works)
 - [Step-by-step tutorial](#step-by-step-tutorial)
@@ -34,6 +39,19 @@
 - [Things to know](#things-to-know)
 - [Uninstall](#uninstall)
 - [FAQ](#faq)
+
+## Why this project exists
+
+I play eFootball from **Lima, Peru**. South America has only a few server regions, and my matches often ended up being played far from home.
+
+To understand what was happening, I used Windows Resource Monitor to check which server the game connected to in every match. The results were clear:
+
+- Three matches were played in **Santiago, Chile** (~55 ms). Two went well. One was terrible, and since the server was the same, the problem was my opponent's connection.
+- One match was played in the **United States**, at **139 ms**. With only 2 connection bars it was practically unplayable, while my opponent was probably playing with a fraction of that delay.
+
+I found out that eFootball's match servers run on **Google Cloud and Amazon Web Services**, and that both companies publish the official IP ranges of every region. First I blocked the far servers by hand in Windows Firewall and confirmed the game kept working normally. Then I turned it into this tool, so any player, in any country, can do the same in one click: it measures **their own** ping and decides which servers are close for them.
+
+— [@mrstalex](https://www.instagram.com/mrstalex/) (IG)
 
 ## The problem
 
@@ -80,9 +98,14 @@ On this page, click the green **Code** button → **Download ZIP**. Extract the 
 Double-click **`Run.bat`**. Windows asks for administrator permission: click **Yes**. You will see this menu:
 
 ```text
-  ==========================================
-    eFootball Region Lock
-  ==========================================
+         _...----..._
+       .'  \  __  /  '.      )  )  )
+      /  ---\/  \/---  \
+     |      |    |      |    eFootball Region Lock
+      \  ---/\__/\---  /     Play on servers close to you
+       '._ /      \ _.'
+          '--....--'         Powered by @mrstalex (IG)
+  ---------------------------------------------------------------
 
   1. Simulate (measure only, change nothing)  / Simular
   2. Apply (max 100 ms, 4 servers)            / Aplicar

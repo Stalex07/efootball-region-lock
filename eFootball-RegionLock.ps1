@@ -2,6 +2,7 @@
 <#
 .SYNOPSIS
     eFootball Region Lock - keeps eFootball online matches on servers close to you.
+    Powered by @mrstalex (IG).
 
 .DESCRIPTION
     Measures your latency to every Google Cloud and Amazon Web Services region,
@@ -77,7 +78,8 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ToolVersion  = '1.0.0'
+$ToolVersion  = '1.1.0'
+$Credit       = 'Powered by @mrstalex (IG)'
 $RuleGroup    = 'eFootball Region Lock'
 $ChunkSize    = 400
 $ProtectedAws = @('ap-northeast-1', 'us-west-2', 'eu-west-1')
@@ -271,11 +273,34 @@ function Show-Status {
     }
 }
 
+function Show-Banner {
+    $lines = @(
+        @{ Art = '         _...----..._';        Text = '';                                   Color = 'Cyan' },
+        @{ Art = "       .'  \  __  /  '.";      Text = ')  )  )';                            Color = 'Cyan' },
+        @{ Art = '      /  ---\/  \/---  \';     Text = '';                                   Color = 'Cyan' },
+        @{ Art = '     |      |    |      |';    Text = "eFootball Region Lock  v$ToolVersion"; Color = 'White' },
+        @{ Art = '      \  ---/\__/\---  /';     Text = (T 'Play on servers close to you' 'Juega en servidores cercanos a ti'); Color = 'Gray' },
+        @{ Art = "       '._ /      \ _.'";      Text = '';                                   Color = 'Cyan' },
+        @{ Art = "          '--....--'";         Text = $Credit;                              Color = 'Green' }
+    )
+    Write-Host ''
+    foreach ($l in $lines) {
+        Write-Host ($l.Art.PadRight(29)) -ForegroundColor Cyan -NoNewline
+        Write-Host $l.Text -ForegroundColor $l.Color
+    }
+    Write-Host ('  ' + ('-' * 63)) -ForegroundColor DarkGray
+    Write-Host ''
+}
+
+function Show-Footer {
+    Write-Host ''
+    Write-Host "  $Credit" -ForegroundColor Green
+    Write-Host ''
+}
+
 # ---------------------------------------------------------------- main
 
-Write-Host ''
-Write-Host "  eFootball Region Lock v$ToolVersion" -ForegroundColor Cyan
-Write-Host ''
+Show-Banner
 
 if (($Mode -eq 'Apply' -or $Mode -eq 'Remove') -and -not (Test-Admin)) {
     Say 'This mode needs administrator rights. Right-click Run.bat and choose "Run as administrator".' `
@@ -283,11 +308,12 @@ if (($Mode -eq 'Apply' -or $Mode -eq 'Remove') -and -not (Test-Admin)) {
     exit 1
 }
 
-if ($Mode -eq 'Status') { Show-Status; exit 0 }
+if ($Mode -eq 'Status') { Show-Status; Show-Footer; exit 0 }
 
 if ($Mode -eq 'Remove') {
     $n = Remove-ToolRules
     Say ("Removed {0} rule(s). eFootball can use every server again." -f $n) ("Se quitaron {0} regla(s). eFootball vuelve a poder usar todos los servidores." -f $n) 'Green'
+    Show-Footer
     exit 0
 }
 
@@ -437,6 +463,7 @@ Say ("Regions to block: {0}  |  IP ranges: {1}" -f ($blockedGcp.Count + $blocked
 if ($Mode -eq 'DryRun') {
     Write-Host ''
     Say 'Simulation only: nothing was changed.' 'Solo simulacion: no se cambio nada.' 'Yellow'
+    Show-Footer
     exit 0
 }
 
@@ -483,3 +510,4 @@ Say ("Done: {0} rule(s) created, only for eFootball and only for UDP." -f $creat
     ("Listo: {0} regla(s) creadas, solo para eFootball y solo para UDP." -f $created) 'Green'
 Say 'To undo everything, run Run.bat and choose "Remove".' 'Para deshacerlo todo, abre Run.bat y elige "Quitar".' 'Green'
 Say 'Re-run it every few weeks: Google and Amazon add new IP ranges.' 'Vuelve a ejecutarlo cada pocas semanas: Google y Amazon agregan rangos nuevos.' 'Gray'
+Show-Footer

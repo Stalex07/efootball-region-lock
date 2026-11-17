@@ -20,11 +20,16 @@
   <a href="README.md">English</a> · <b>Español</b>
 </p>
 
+<p align="center">
+  Powered by <a href="https://www.instagram.com/mrstalex/"><b>@mrstalex</b></a> (IG)
+</p>
+
 > [!NOTE]
 > Herramienta de la comunidad, no oficial. Sin relación con Konami. Úsala bajo tu propia responsabilidad.
 
 ## Contenido
 
+- [Por qué existe este proyecto](#por-qué-existe-este-proyecto)
 - [El problema](#el-problema)
 - [Cómo funciona](#cómo-funciona)
 - [Tutorial paso a paso](#tutorial-paso-a-paso)
@@ -34,6 +39,19 @@
 - [Ten en cuenta](#ten-en-cuenta)
 - [Desinstalar](#desinstalar)
 - [Preguntas frecuentes](#preguntas-frecuentes)
+
+## Por qué existe este proyecto
+
+Juego eFootball desde **Lima, Perú**. Sudamérica tiene pocas regiones de servidores, y los partidos a menudo terminaban jugándose lejos de casa.
+
+Para entender qué pasaba, usé el Monitor de recursos de Windows y revisé a qué servidor se conectaba el juego en cada partido. Los resultados lo dejaron claro:
+
+- Tres partidos se jugaron en **Santiago de Chile** (~55 ms). Dos fueron bien. Uno fue muy malo, y como el servidor era el mismo, el problema era la conexión del rival.
+- Un partido se jugó en **Estados Unidos**, a **139 ms**. Con solo 2 barras de conexión, el partido era prácticamente injugable, mientras mi rival seguramente jugaba con una fracción de ese retraso.
+
+Descubrí que los servidores de partido de eFootball funcionan en **Google Cloud y Amazon Web Services**, y que ambas empresas publican los rangos de IP oficiales de cada región. Primero bloqueé a mano los servidores lejanos en el Firewall de Windows y comprobé que el juego seguía funcionando con normalidad. Después lo convertí en esta herramienta, para que cualquier jugador, en cualquier país, pueda hacer lo mismo en un clic: mide **su propio** ping y decide qué servidores son cercanos para él.
+
+— [@mrstalex](https://www.instagram.com/mrstalex/) (IG)
 
 ## El problema
 
@@ -80,9 +98,14 @@ En esta página, haz clic en el botón verde **Code** → **Download ZIP**. Desc
 Haz doble clic en **`Run.bat`**. Windows te pide permiso de administrador: pulsa **Sí**. Verás este menú:
 
 ```text
-  ==========================================
-    eFootball Region Lock
-  ==========================================
+         _...----..._
+       .'  \  __  /  '.      )  )  )
+      /  ---\/  \/---  \
+     |      |    |      |    eFootball Region Lock
+      \  ---/\__/\---  /     Play on servers close to you
+       '._ /      \ _.'
+          '--....--'         Powered by @mrstalex (IG)
+  ---------------------------------------------------------------
 
   1. Simulate (measure only, change nothing)  / Simular
   2. Apply (max 100 ms, 4 servers)            / Aplicar

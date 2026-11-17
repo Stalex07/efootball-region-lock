@@ -16,9 +16,14 @@ set "PS=powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0eFootball-Regi
 :menu
 cls
 echo.
-echo   ==========================================
-echo     eFootball Region Lock
-echo   ==========================================
+echo          _...----..._
+echo        .'  \  __  /  '.      )  )  )
+echo       /  ---\/  \/---  \
+echo      ^|      ^|    ^|      ^|    eFootball Region Lock
+echo       \  ---/\__/\---  /     Play on servers close to you
+echo        '._ /      \ _.'
+echo           '--....--'         Powered by @mrstalex (IG)
+echo   ---------------------------------------------------------------
 echo.
 echo   1. Simulate (measure only, change nothing)  / Simular
 echo   2. Apply (max 100 ms, 4 servers)            / Aplicar
