@@ -1,5 +1,7 @@
 <p align="center"><img src="assets/banner.jpg" alt="eFootball Region Lock - Play on servers close to you" width="100%"></p>
 
+<p align="center"><img src="assets/logo.jpg" alt="eFootball Region Lock logo" width="140"></p>
+
 <h1 align="center">eFootball Region Lock</h1>
 
 <p align="center">
