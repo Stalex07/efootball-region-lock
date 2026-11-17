@@ -105,7 +105,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ToolVersion  = '1.3.1'
+$ToolVersion  = '1.3.2'
 $Credit       = 'Powered by @mrstalex'
 $RuleGroup    = 'eFootball Region Lock'
 $RuleTag      = 'Created by eFootball Region Lock'   # every rule we create starts its description with this
@@ -648,8 +648,10 @@ function Save-History($Info, $Stats, [string]$Source) {
             LossPct  = $Stats.Loss
             Quality  = (Get-Quality $Stats.Ping $Stats.Jitter $Stats.Loss)
         } | Export-Csv -LiteralPath $HistoryFile -Append -NoTypeInformation -Encoding UTF8
+        return $true
     } catch {
         Say "Could not save the match history: $($_.Exception.Message)" "No se pudo guardar el historial: $($_.Exception.Message)" 'Yellow'
+        return $false
     }
 }
 
@@ -714,12 +716,16 @@ function Start-LiveMonitor([string]$Ip, [int]$ProcessId) {
     $window = New-Object System.Collections.Generic.List[object]
     $all = New-Object System.Collections.Generic.List[double]
     $sent = 0; $lostTotal = 0; $failStreak = 0
+    # Throw away keys pressed before the monitor started (menu choice, Alt+Tab...),
+    # otherwise they would stop the monitor on its very first second.
+    try { while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) } } catch { }
     Say 'Live monitor running. Press any key to stop.' 'Monitor en vivo activo. Pulsa cualquier tecla para parar.' 'Cyan'
     Write-Host ''
     while ($true) {
         $tick = [Diagnostics.Stopwatch]::StartNew()
         $stop = $false
-        try { if ([Console]::KeyAvailable) { [void][Console]::ReadKey($true); $stop = $true } } catch { }
+        # Ignore keys during the first 2 seconds, in case a key was still on its way.
+        try { if ([Console]::KeyAvailable) { [void][Console]::ReadKey($true); if ($sent -ge 2) { $stop = $true } } } catch { }
         if ($stop) { break }
         if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { break }
 
@@ -851,22 +857,28 @@ if ($Mode -eq 'Match' -or $Mode -eq 'Monitor') {
     if (-not $lists) { Show-Footer; exit 1 }
     $info = Get-MatchInfo $peer (New-CloudTable $lists)
 
+    $saved = $false
     if ($Mode -eq 'Match') {
         Say 'Measuring ping, jitter and packet loss (10 pings)...' 'Midiendo ping, jitter y perdida de paquetes (10 pings)...'
         $stats = Measure-Icmp $peer.Ip 10 300
         Show-MatchCard $info $stats $peer.Packets
-        Save-History $info $stats 'Check'
+        $saved = Save-History $info $stats 'Check'
     } else {
         Write-Host ''
         Write-Host ("  {0}: {1}   {2}" -f (T 'Server' 'Servidor'), $info.Where, $info.TypeText) -ForegroundColor Cyan
         $stats = Start-LiveMonitor $peer.Ip $peer.ProcessId
-        if ($stats.Sent -gt 0) {
+        if ($stats.Sent -ge 3) {
             Show-MatchCard $info $stats $peer.Packets
-            Save-History $info $stats 'Monitor'
+            $saved = Save-History $info $stats 'Monitor'
+        } else {
+            Say 'The monitor stopped before it could measure anything, so nothing was saved.' `
+                'El monitor se detuvo antes de poder medir, asi que no se guardo nada.' 'Yellow'
         }
     }
     Write-Host ''
-    Say 'Saved in your match history (only on this PC, without the opponent''s IP).' 'Guardado en tu historial (solo en este PC, sin la IP del rival).' 'DarkGray'
+    if ($saved) {
+        Say 'Saved in your match history (only on this PC, without the opponent''s IP).' 'Guardado en tu historial (solo en este PC, sin la IP del rival).' 'DarkGray'
+    }
     Show-Footer
     exit 0
 }
