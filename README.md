@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white">
   <img alt="PowerShell 5.1+" src="https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell&logoColor=white">
-  <img alt="Steam, Epic, Microsoft Store" src="https://img.shields.io/badge/Steam%20%7C%20Epic%20%7C%20MS%20Store-supported-2ea44f">
+  <img alt="Steam and Xbox app" src="https://img.shields.io/badge/Steam%20%7C%20Xbox%20app-supported-2ea44f">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
@@ -42,7 +42,7 @@ eFootball's match servers run on **Google Cloud** and **Amazon Web Services**. B
 ## How it works
 
 ```text
-1. Find the game         Steam, Epic and Microsoft Store are detected automatically
+1. Find the game         Steam and the Xbox app (Microsoft Store) are detected automatically
 2. Download IP lists     official lists from Google and Amazon
 3. Measure your ping     to every Google Cloud and AWS region (about 85, 1-2 minutes)
 4. Keep the closest      e.g. everything under 100 ms, up to 4 regions

@@ -36,7 +36,7 @@
     so you can still find matches. Default 2.
 
 .PARAMETER GamePath
-    Path(s) to eFootball.exe. Detected automatically for Steam and Epic if omitted.
+    Path(s) to eFootball.exe. Detected automatically for Steam and the Xbox app (Microsoft Store) if omitted.
 
 .PARAMETER AlwaysAllow
     Region codes that must never be blocked, e.g. southamerica-east1, sa-east-1.
@@ -145,21 +145,6 @@ function Find-GameExe {
     foreach ($lib in ($libs | Sort-Object -Unique)) {
         $p = Join-Path $lib $rel
         if (Test-Path -LiteralPath $p) { $found.Add((Get-Item -LiteralPath $p).FullName) }
-    }
-
-    # Epic Games Launcher manifests
-    $manifests = Join-Path $env:ProgramData 'Epic\EpicGamesLauncher\Data\Manifests'
-    if (Test-Path -LiteralPath $manifests) {
-        foreach ($f in Get-ChildItem -LiteralPath $manifests -Filter '*.item' -ErrorAction SilentlyContinue) {
-            try {
-                $j = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json
-                if ($j.DisplayName -match 'eFootball' -and $j.InstallLocation -and (Test-Path -LiteralPath $j.InstallLocation)) {
-                    $exe = Get-ChildItem -LiteralPath $j.InstallLocation -Recurse -Filter 'eFootball.exe' -ErrorAction SilentlyContinue |
-                        Where-Object { $_.Length -gt 50MB } | Select-Object -First 1
-                    if ($exe) { $found.Add($exe.FullName) }
-                }
-            } catch { }
-        }
     }
 
     # Xbox app / Microsoft Store: the default "XboxGames" folder on every local drive,
@@ -320,7 +305,7 @@ $packages = @()
 if (-not $GamePath) { $packages = @(Find-GamePackages) }
 
 if ($exes.Count -eq 0 -and $packages.Count -eq 0) {
-    Say 'eFootball was not found automatically (Steam / Epic / Microsoft Store).' 'No se encontro eFootball automaticamente (Steam / Epic / Microsoft Store).' 'Yellow'
+    Say 'eFootball was not found automatically (Steam / Xbox app).' 'No se encontro eFootball automaticamente (Steam / app de Xbox).' 'Yellow'
     Say 'Run again with: -GamePath "C:\path\to\eFootball.exe"' 'Vuelve a ejecutarlo con: -GamePath "C:\ruta\a\eFootball.exe"' 'Yellow'
     if ($Mode -eq 'Apply') { exit 1 }
 } else {
