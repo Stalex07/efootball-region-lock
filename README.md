@@ -91,7 +91,7 @@ No programming needed. It takes about 3 minutes.
 
 ### 1. Download
 
-On this page, click the green **Code** button → **Download ZIP**. Extract the ZIP to any folder (for example your Desktop).
+Go to the **[latest release](https://github.com/Stalex07/efootball-region-lock/releases/latest)** and download the `.zip` file under **Assets**. Extract it to any folder (for example your Desktop).
 
 ### 2. Open the menu
 

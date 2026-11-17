@@ -1,0 +1,74 @@
+name: Problem report / Reportar un problema
+description: Something does not work as expected / Algo no funciona como esperabas
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! / ¡Gracias por avisar!
+
+        Before opening the report, please run **Run.bat → 1. Simulate** and copy its output.
+        Antes de enviar el reporte, ejecuta **Run.bat → 1. Simular** y copia lo que muestra.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened? / ¿Qué pasó?
+      description: Describe the problem and what you expected. / Describe el problema y lo que esperabas.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: option
+    attributes:
+      label: Which option did you use? / ¿Qué opción usaste?
+      options:
+        - 1. Simulate / Simular
+        - 2. Apply / Aplicar
+        - 3. Apply with custom settings / Aplicar personalizado
+        - 4. Status / Estado
+        - 5. Remove all rules / Quitar todo
+    validations:
+      required: true
+
+  - type: textarea
+    id: simulate-output
+    attributes:
+      label: Simulate output / Resultado de Simular
+      description: Paste the full text shown by option 1. / Pega el texto completo que muestra la opción 1.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Game version / Versión del juego
+      options:
+        - Steam
+        - Xbox app / Microsoft Store
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Country / País
+      description: Helps to understand which servers should be close to you. / Ayuda a saber qué servidores deberían estar cerca de ti.
+      placeholder: "e.g. Peru / ej. Perú"
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version / Versión de Windows
+      placeholder: "e.g. Windows 11 24H2"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks / Comprobaciones
+      options:
+        - label: I am using the latest release. / Uso la última versión.
+          required: true
+        - label: I ran Run.bat as administrator. / Ejecuté Run.bat como administrador.
+          required: true

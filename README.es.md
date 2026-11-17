@@ -91,7 +91,7 @@ No necesitas saber programar. Tarda unos 3 minutos.
 
 ### 1. Descargar
 
-En esta página, haz clic en el botón verde **Code** → **Download ZIP**. Descomprime el ZIP en cualquier carpeta (por ejemplo, el Escritorio).
+Entra en la **[última versión](https://github.com/Stalex07/efootball-region-lock/releases/latest)** y descarga el archivo `.zip` que aparece en **Assets**. Descomprímelo en cualquier carpeta (por ejemplo, el Escritorio).
 
 ### 2. Abrir el menú
 
