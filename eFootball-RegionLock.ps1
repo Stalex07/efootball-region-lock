@@ -114,7 +114,25 @@ $ProtectedAws = @('ap-northeast-1', 'us-west-2', 'eu-west-1')
 
 $GcpRangesUrl = 'https://www.gstatic.com/ipranges/cloud.json'
 $AwsRangesUrl = 'https://ip-ranges.amazonaws.com/ip-ranges.json'
-$GcpProbesUrl = 'https://gcping.com/api/endpoints'
+
+# Google's official regional endpoints (<service>.<region>.rep.googleapis.com) are served
+# inside each region, so the time to connect to them is the latency to that region.
+$GcpProbeServices = @('storage', 'compute')
+
+$GcpNames = @{
+    'africa-south1' = 'Johannesburg'; 'asia-east1' = 'Taiwan'; 'asia-east2' = 'Hong Kong'; 'asia-northeast1' = 'Tokyo'
+    'asia-northeast2' = 'Osaka'; 'asia-northeast3' = 'Seoul'; 'asia-south1' = 'Mumbai'; 'asia-south2' = 'Delhi'
+    'asia-southeast1' = 'Singapore'; 'asia-southeast2' = 'Jakarta'; 'asia-southeast3' = 'Bangkok'
+    'australia-southeast1' = 'Sydney'; 'australia-southeast2' = 'Melbourne'; 'europe-central2' = 'Warsaw'
+    'europe-north1' = 'Finland'; 'europe-north2' = 'Stockholm'; 'europe-southwest1' = 'Madrid'; 'europe-west1' = 'Belgium'
+    'europe-west2' = 'London'; 'europe-west3' = 'Frankfurt'; 'europe-west4' = 'Netherlands'; 'europe-west6' = 'Zurich'
+    'europe-west8' = 'Milan'; 'europe-west9' = 'Paris'; 'europe-west10' = 'Berlin'; 'europe-west12' = 'Turin'
+    'me-central1' = 'Doha'; 'me-central2' = 'Dammam'; 'me-west1' = 'Tel Aviv'; 'northamerica-northeast1' = 'Montreal'
+    'northamerica-northeast2' = 'Toronto'; 'northamerica-south1' = 'Queretaro'; 'southamerica-east1' = 'Sao Paulo'
+    'southamerica-west1' = 'Santiago'; 'us-central1' = 'Iowa'; 'us-east1' = 'South Carolina'; 'us-east4' = 'N. Virginia'
+    'us-east5' = 'Columbus'; 'us-south1' = 'Dallas'; 'us-west1' = 'Oregon'; 'us-west2' = 'Los Angeles'
+    'us-west3' = 'Salt Lake City'; 'us-west4' = 'Las Vegas'
+}
 
 $DataDir      = Join-Path $env:LOCALAPPDATA 'eFootball Region Lock'
 $HistoryFile  = Join-Path $DataDir 'match-history.csv'
@@ -272,13 +290,6 @@ function Test-Cidr([string]$Cidr) {
     ($len -ge 0 -and $len -le $max)
 }
 
-function Test-ProbeUrl([string]$Url) {
-    # gcping endpoints are Cloud Run services: only https://<name>.a.run.app is accepted.
-    $u = $null
-    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$u)) { return $false }
-    ($u.Scheme -eq 'https') -and ($u.Host -match '^[a-z0-9-]+\.a\.run\.app$') -and ($u.AbsolutePath -eq '/')
-}
-
 function Get-Stats([double[]]$Values) {
     # Median = typical latency. Jitter = average change between consecutive samples.
     if ($Values.Count -lt 3) { return $null }
@@ -291,24 +302,6 @@ function Get-Stats([double[]]$Values) {
         Median = [int][math]::Round($median)
         Jitter = [int][math]::Round($diff / ($Values.Count - 1))
     }
-}
-
-function Measure-Http([System.Net.Http.HttpClient]$Client, [string]$Url, [int]$Samples = 6) {
-    # The first request pays for DNS + TLS, so it is discarded.
-    $vals = @()
-    for ($i = 0; $i -lt $Samples; $i++) {
-        $sw = [Diagnostics.Stopwatch]::StartNew()
-        try {
-            $task = $Client.GetAsync($Url)
-            $ok = $task.Wait(4000)
-            $sw.Stop()
-            if ($ok) {
-                $task.Result.Dispose()
-                if ($i -gt 0) { $vals += $sw.Elapsed.TotalMilliseconds }
-            }
-        } catch { $sw.Stop() }
-    }
-    Get-Stats $vals
 }
 
 function Measure-Tcp([string]$HostName, [int]$Port = 443, [int]$Samples = 5) {
@@ -399,25 +392,30 @@ function Show-Footer {
 }
 
 function Get-CloudLists {
-    # Official IP lists from Google and Amazon, plus the gcping probe list. Returns $null on failure.
+    # Official IP lists from Google and Amazon. Returns $null on failure.
     try {
         $g = Invoke-RestMethod -Uri $GcpRangesUrl -TimeoutSec 60
         $a = Invoke-RestMethod -Uri $AwsRangesUrl -TimeoutSec 60
-        $wc = New-Object Net.WebClient
-        $wc.Encoding = [Text.Encoding]::UTF8
-        $p = $wc.DownloadString($GcpProbesUrl) | ConvertFrom-Json
-        $wc.Dispose()
     } catch {
         Say "Download failed: $($_.Exception.Message)" "Fallo la descarga: $($_.Exception.Message)" 'Red'
         return $null
     }
-    $gc = @($g.prefixes).Count; $ac = @($a.prefixes).Count; $pc = @($p.PSObject.Properties).Count
-    if ($gc -lt 100 -or $ac -lt 500 -or $pc -lt 10) {
-        Say ("The downloaded lists look incomplete (Google: {0}, Amazon: {1}, probes: {2})." -f $gc, $ac, $pc) `
-            ("Las listas descargadas parecen incompletas (Google: {0}, Amazon: {1}, puntos de prueba: {2})." -f $gc, $ac, $pc) 'Red'
+    $gc = @($g.prefixes).Count; $ac = @($a.prefixes).Count
+    if ($gc -lt 100 -or $ac -lt 500) {
+        Say ("The downloaded lists look incomplete (Google: {0}, Amazon: {1})." -f $gc, $ac) `
+            ("Las listas descargadas parecen incompletas (Google: {0}, Amazon: {1})." -f $gc, $ac) 'Red'
         return $null
     }
-    [pscustomobject]@{ Gcp = $g; Aws = $a; Probes = $p }
+    [pscustomobject]@{ Gcp = $g; Aws = $a }
+}
+
+function Measure-GcpRegion([string]$Region) {
+    # Tries each official regional endpoint until one resolves and answers.
+    foreach ($svc in $GcpProbeServices) {
+        $stats = Measure-Tcp "$svc.$Region.rep.googleapis.com"
+        if ($stats) { return $stats }
+    }
+    $null
 }
 
 # ---------------------------------------------------------------- IPv4 + cloud lookup
@@ -460,8 +458,7 @@ function New-CloudTable($Lists) {
     foreach ($p in $Lists.Gcp.prefixes) {
         if (-not $p.PSObject.Properties['ipv4Prefix']) { continue }
         $loc = ''
-        $probe = $Lists.Probes.PSObject.Properties[$p.scope]
-        if ($probe) { $loc = [string]$probe.Value.RegionName }
+        if ($GcpNames.ContainsKey($p.scope)) { $loc = $GcpNames[$p.scope] }
         Add-Net $p.ipv4Prefix 'Google Cloud' $p.scope $loc 'region'
     }
     foreach ($p in $Lists.Aws.prefixes) {
@@ -897,11 +894,11 @@ $targets += @($exes | ForEach-Object { @{ Program = $_ } })
 $targets += @($packages | ForEach-Object { @{ Package = $_.Sid } })
 Write-Host ''
 
-# --- official IP lists + probe list (validated)
+# --- official IP lists (validated)
 Say 'Downloading official IP lists from Google and Amazon...' 'Descargando las listas oficiales de IP de Google y Amazon...'
 $lists = Get-CloudLists
 if (-not $lists) { Say 'Nothing was changed.' 'No se cambio nada.' 'Red'; exit 1 }
-$gcp = $lists.Gcp; $aws = $lists.Aws; $gcpProbes = $lists.Probes
+$gcp = $lists.Gcp; $aws = $lists.Aws
 
 # --- regions to measure (only well-formed region codes)
 $regionPattern = '^[a-z0-9-]+$'
@@ -910,10 +907,6 @@ $gcpRegions = @($gcp.prefixes | ForEach-Object { $_.scope } |
 $awsRegions = @($aws.prefixes |
     Where-Object { $_.service -eq 'EC2' -and $_.region -eq $_.network_border_group -and $_.region -cmatch $regionPattern -and $_.region -notlike 'cn-*' -and $_.region -notlike 'us-gov-*' } |
     ForEach-Object { $_.region } | Sort-Object -Unique)
-
-Add-Type -AssemblyName System.Net.Http
-$http = New-Object System.Net.Http.HttpClient
-$http.Timeout = [TimeSpan]::FromSeconds(5)
 
 $results = New-Object System.Collections.Generic.List[object]
 $total = $gcpRegions.Count + $awsRegions.Count
@@ -929,13 +922,9 @@ function New-Result($Provider, $Region, $Location, $Stats) {
 foreach ($r in $gcpRegions) {
     $done++
     Write-Progress -Activity 'eFootball Region Lock' -Status "Google Cloud: $r" -PercentComplete ([int](100 * $done / $total))
-    $probe = $gcpProbes.PSObject.Properties[$r]
-    $stats = $null; $loc = ''
-    if ($probe -and (Test-ProbeUrl $probe.Value.URL)) {
-        $loc = [string]$probe.Value.RegionName
-        $stats = Measure-Http $http ($probe.Value.URL.TrimEnd('/') + '/api/ping')
-    }
-    $results.Add((New-Result 'Google' $r $loc $stats))
+    $loc = ''
+    if ($GcpNames.ContainsKey($r)) { $loc = $GcpNames[$r] }
+    $results.Add((New-Result 'Google' $r $loc (Measure-GcpRegion $r)))
 }
 foreach ($r in $awsRegions) {
     $done++
@@ -945,7 +934,6 @@ foreach ($r in $awsRegions) {
     $results.Add((New-Result 'Amazon' $r $loc (Measure-Tcp "ec2.$r.amazonaws.com")))
 }
 Write-Progress -Activity 'eFootball Region Lock' -Completed
-$http.Dispose()
 
 # --- decide (automatic)
 $allowedKeys = New-Object 'System.Collections.Generic.HashSet[string]'

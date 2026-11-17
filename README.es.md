@@ -77,14 +77,14 @@ Cómo se mide la latencia:
 
 | Nube | Método |
 |---|---|
-| Google Cloud | Tiempo de respuesta HTTP a los puntos de prueba de cada región de [gcping](https://gcping.com), un proyecto de código abierto de Google Cloud |
+| Google Cloud | Tiempo de conexión TCP al servidor regional oficial de Google, `storage.<región>.rep.googleapis.com` (o `compute.<región>...` donde no hay storage), que se atiende dentro de cada región |
 | Amazon Web Services | Tiempo de conexión TCP al servidor oficial de cada región, `ec2.<región>.amazonaws.com` |
 
 Cada región se mide **5 veces**. La herramienta usa la **mediana** como latencia estimada y muestra el **jitter** (cuánto varían las muestras) como nivel de estabilidad: Alta, Media o Baja.
 
-Estos valores son una **estimación por región**: miden un punto de prueba dentro de cada región de la nube, no el servidor exacto de un partido futuro (la dirección del servidor cambia en cada partido). Los servidores de partido funcionan dentro de esas mismas regiones, así que la estimación es cercana: en las pruebas del autor, Santiago dio 38-40 ms con este método y 32-34 ms con un ping normal.
+Estos valores son una **estimación por región**: miden un punto de prueba dentro de cada región de la nube, no el servidor exacto de un partido futuro (la dirección del servidor cambia en cada partido). Los servidores de partido funcionan dentro de esas mismas regiones, así que la estimación es cercana: en las pruebas del autor, Santiago dio 31-34 ms con este método y 32-34 ms con un ping normal.
 
-Antes de usar las listas, la herramienta comprueba que estén completas, que cada rango de IP esté bien formado y que cada punto de prueba sea una dirección `https://...a.run.app`. Si algo falla, no se cambia nada.
+Para medir solo se contacta con servidores oficiales de Google y Amazon. Antes de usar las listas de IP, la herramienta comprueba que estén completas y que cada rango de IP esté bien formado. Si algo falla, no se cambia nada.
 
 Listas oficiales de IP:
 [Google Cloud](https://www.gstatic.com/ipranges/cloud.json) ·
@@ -293,7 +293,7 @@ Ejecútalos en PowerShell **como administrador**, dentro de la carpeta de la her
 
 ## Limitaciones conocidas
 
-- **La latencia es una estimación por región**, no el ping exacto de un partido. Los valores de Google son un tiempo HTTP y suelen marcar 5-15 ms más que un ping normal, así que deja algo de margen en `-MaxPing`.
+- **La latencia es una estimación por región**, no el ping exacto de un partido. Un servidor de partido concreto puede ir unos ms más rápido o más lento que el punto de su región, así que deja algo de margen en `-MaxPing`.
 - **Los partidos peer-to-peer no se controlan.** Algunos partidos (por ejemplo, los amistosos) pueden conectar a los jugadores directamente en vez de a través de un servidor en la nube.
 - **Solo cubre servidores que estén en las listas oficiales de Google Cloud y AWS.** Si Konami usa otra infraestructura, no se bloquea.
 - **No puede elegir ni arreglar a tu rival.** Si juega con mal Wi-Fi, el partido puede ir mal igual.

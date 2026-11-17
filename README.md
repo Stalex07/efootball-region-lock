@@ -77,14 +77,14 @@ How latency is measured:
 
 | Cloud | Method |
 |---|---|
-| Google Cloud | HTTP round trip to the per-region test endpoints of [gcping](https://gcping.com), an open-source Google Cloud project |
+| Google Cloud | TCP connect time to Google's official regional endpoint `storage.<region>.rep.googleapis.com` (or `compute.<region>...` where storage is not available), which is served inside each region |
 | Amazon Web Services | TCP connect time to the official regional endpoint `ec2.<region>.amazonaws.com` |
 
 Each region is measured **5 times**. The tool uses the **median** as the estimated latency and shows the **jitter** (how much the samples vary) as a stability rating: High, Medium or Low.
 
-These values are an **estimate per region**: they measure a test endpoint inside each cloud region, not the exact server of a future match (match server addresses change every match). Match servers run inside those same regions, so the estimate is close: in the author's tests, Santiago measured 38-40 ms with this method and 32-34 ms with a plain ping.
+These values are an **estimate per region**: they measure a test endpoint inside each cloud region, not the exact server of a future match (match server addresses change every match). Match servers run inside those same regions, so the estimate is close: in the author's tests, Santiago measured 31-34 ms with this method and 32-34 ms with a plain ping.
 
-Before using the lists, the tool checks that they are complete, that every IP range is well formed, and that every test endpoint is an `https://...a.run.app` address. If a check fails, nothing is changed.
+Only official Google and Amazon servers are contacted to measure. Before using the IP lists, the tool checks that they are complete and that every IP range is well formed. If a check fails, nothing is changed.
 
 Official IP lists:
 [Google Cloud](https://www.gstatic.com/ipranges/cloud.json) ·
@@ -293,7 +293,7 @@ Run these from an **administrator** PowerShell in the tool's folder. `DryRun`, `
 
 ## Known limitations
 
-- **Latency is an estimate per region**, not the exact ping of a match. Google values are an HTTP round trip and usually read 5-15 ms higher than a plain ping, so leave some margin in `-MaxPing`.
+- **Latency is an estimate per region**, not the exact ping of a match. A specific match server can be a few ms faster or slower than its region's endpoint, so leave some margin in `-MaxPing`.
 - **Peer-to-peer matches are not controlled.** Some matches (for example friend matches) can connect players directly instead of through a cloud server.
 - **Only servers inside the official Google Cloud and AWS lists are covered.** If Konami uses other infrastructure, it is not blocked.
 - **It cannot choose or fix your opponent.** If they play on bad Wi-Fi, the match can still feel bad.
