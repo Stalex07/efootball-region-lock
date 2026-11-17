@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     eFootball Region Lock - keeps eFootball online matches on servers close to you.
-    Powered by @mrstalex (IG).
+    Powered by @mrstalex.
 
 .DESCRIPTION
     Measures your latency to every Google Cloud and Amazon Web Services region,
@@ -79,7 +79,7 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $ToolVersion  = '1.1.0'
-$Credit       = 'Powered by @mrstalex (IG)'
+$Credit       = 'Powered by @mrstalex'
 $RuleGroup    = 'eFootball Region Lock'
 $ChunkSize    = 400
 $ProtectedAws = @('ap-northeast-1', 'us-west-2', 'eu-west-1')

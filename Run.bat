@@ -22,7 +22,7 @@ echo       /  ---\/  \/---  \
 echo      ^|      ^|    ^|      ^|    eFootball Region Lock
 echo       \  ---/\__/\---  /     Play on servers close to you
 echo        '._ /      \ _.'
-echo           '--....--'         Powered by @mrstalex (IG)
+echo           '--....--'         Powered by @mrstalex
 echo   ---------------------------------------------------------------
 echo.
 echo   1. Simulate (measure only, change nothing)  / Simular

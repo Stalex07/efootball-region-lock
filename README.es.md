@@ -1,6 +1,4 @@
-<!-- Banner: guárdalo como assets/banner.png y descomenta la siguiente línea
-<p align="center"><img src="assets/banner.png" alt="eFootball Region Lock" width="100%"></p>
--->
+<p align="center"><img src="assets/banner.jpg" alt="eFootball Region Lock - Play on servers close to you" width="100%"></p>
 
 <h1 align="center">eFootball Region Lock</h1>
 
@@ -21,7 +19,7 @@
 </p>
 
 <p align="center">
-  Powered by <a href="https://www.instagram.com/mrstalex/"><b>@mrstalex</b></a> (IG)
+  Powered by <a href="https://www.instagram.com/mrstalex/"><b>@mrstalex</b></a>
 </p>
 
 > [!NOTE]
@@ -51,7 +49,7 @@ Para entender qué pasaba, usé el Monitor de recursos de Windows y revisé a qu
 
 Descubrí que los servidores de partido de eFootball funcionan en **Google Cloud y Amazon Web Services**, y que ambas empresas publican los rangos de IP oficiales de cada región. Primero bloqueé a mano los servidores lejanos en el Firewall de Windows y comprobé que el juego seguía funcionando con normalidad. Después lo convertí en esta herramienta, para que cualquier jugador, en cualquier país, pueda hacer lo mismo en un clic: mide **su propio** ping y decide qué servidores son cercanos para él.
 
-— [@mrstalex](https://www.instagram.com/mrstalex/) (IG)
+— [@mrstalex](https://www.instagram.com/mrstalex/)
 
 ## El problema
 
@@ -104,7 +102,7 @@ Haz doble clic en **`Run.bat`**. Windows te pide permiso de administrador: pulsa
      |      |    |      |    eFootball Region Lock
       \  ---/\__/\---  /     Play on servers close to you
        '._ /      \ _.'
-          '--....--'         Powered by @mrstalex (IG)
+          '--....--'         Powered by @mrstalex
   ---------------------------------------------------------------
 
   1. Simulate (measure only, change nothing)  / Simular
