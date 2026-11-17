@@ -105,7 +105,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ToolVersion  = '1.3.2'
+$ToolVersion  = '1.3.3'
 $Credit       = 'Powered by @mrstalex'
 $RuleGroup    = 'eFootball Region Lock'
 $RuleTag      = 'Created by eFootball Region Lock'   # every rule we create starts its description with this
@@ -261,6 +261,25 @@ function Find-GamePackages {
         if ($sid) { $list += [pscustomobject]@{ Name = $pkg.PackageFamilyName; Sid = $sid } }
     }
     $list
+}
+
+function Clear-KeyBuffer {
+    # Drop keys pressed earlier (menu choice, Enter from a previous screen...) so they
+    # are not taken as the answer to the next question.
+    try { while ([Console]::KeyAvailable) { [void][Console]::ReadKey($true) } } catch { }
+}
+
+function Read-YesNo([string]$En, [string]$Es) {
+    # Only an explicit yes or no counts. An empty or unknown answer asks again.
+    Clear-KeyBuffer
+    while ($true) {
+        $raw = Read-Host (T $En $Es)
+        if ($null -eq $raw) { $raw = '' }
+        $a = $raw.Trim().ToLowerInvariant()
+        if ($a -match '^(y|yes|s|si)$') { return $true }
+        if ($a -match '^(n|no)$') { return $false }
+        Say 'Please type S (yes) or N (no) and press Enter.' 'Escribe S (si) o N (no) y pulsa Enter.' 'Yellow'
+    }
 }
 
 function Read-IntSetting([string]$En, [string]$Es, [int]$Default, [int]$Min, [int]$Max) {
@@ -887,6 +906,7 @@ if ($Mode -eq 'Match' -or $Mode -eq 'Monitor') {
 
 # --- interactive settings (Run.bat option 3): validated here, never passed through CMD
 if ($AskSettings) {
+    Clear-KeyBuffer
     $MaxPing    = Read-IntSetting 'Max latency in ms (10-500)' 'Latencia maxima en ms (10-500)' $MaxPing 10 500
     $MaxServers = Read-IntSetting 'Max servers to keep, 0 = no limit (0-50)' 'Maximo de servidores, 0 = sin limite (0-50)' $MaxServers 0 50
     Write-Host ''
@@ -977,6 +997,7 @@ $keptLabel = T 'ALLOWED (close)' 'PERMITIDO (cerca)'
 if ($Mode -eq 'Pick') {
     Write-Host ''
     Say 'Automatic suggestion is pre-selected. Switch regions on or off by number.' 'La sugerencia automatica viene marcada. Activa o desactiva regiones por numero.' 'Cyan'
+    Clear-KeyBuffer
     $picked = Invoke-ManualPick $results $allowedKeys
     if ($null -eq $picked) { Say 'Cancelled. Nothing was changed.' 'Cancelado. No se cambio nada.' 'Yellow'; exit 0 }
     $allowedKeys = $picked
@@ -1065,8 +1086,7 @@ if (Get-Process -Name 'eFootball' -ErrorAction SilentlyContinue) {
         'eFootball esta abierto. NO lo apliques durante un partido: quedate en los menus.' 'Yellow'
 }
 if (-not $Yes) {
-    $answer = Read-Host (T 'Apply these firewall rules? (Y/N)' 'Aplicar estas reglas de firewall? (S/N)')
-    if ($answer -notmatch '^(y|yes|s|si)$') {
+    if (-not (Read-YesNo 'Apply these firewall rules? (Y/N)' 'Aplicar estas reglas de firewall? (S/N)')) {
         Say 'Cancelled. Nothing was changed.' 'Cancelado. No se cambio nada.' 'Yellow'
         exit 0
     }
