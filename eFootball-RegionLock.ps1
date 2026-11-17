@@ -105,7 +105,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ToolVersion  = '1.3.3'
+$ToolVersion  = '1.3.4'
 $Credit       = 'Powered by @mrstalex'
 $RuleGroup    = 'eFootball Region Lock'
 $RuleTag      = 'Created by eFootball Region Lock'   # every rule we create starts its description with this
@@ -1096,7 +1096,11 @@ if (-not $Yes) {
 # If anything fails half-way, the new rules are rolled back and the old ones stay in place.
 $oldRules = Get-ToolRules
 
-$keepText = ($close | ForEach-Object { "$($_.Provider) $($_.Region) ($($_.Location), $($_.Ping) ms)" }) -join '; '
+$keepText = ($close | ForEach-Object {
+    $detail = "$($_.Ping) ms"
+    if ($_.Location) { $detail = "$($_.Location), $detail" }
+    "$($_.Provider) $($_.Region) ($detail)"
+}) -join '; '
 $description = "$RuleTag v$ToolVersion on $(Get-Date -Format 'yyyy-MM-dd HH:mm'). " +
                "Mode=$Mode MaxPing=$MaxPing MaxServers=$MaxServers MinServers=$MinServers. Kept: $keepText"
 

@@ -104,7 +104,7 @@ Entra en la **[última versión](https://github.com/Stalex07/efootball-region-lo
 Opcional: comprueba que el ZIP es el original. Abre PowerShell en tu carpeta de Descargas y ejecuta:
 
 ```powershell
-Get-FileHash .\eFootball-Region-Lock-v1.3.3.zip -Algorithm SHA256
+Get-FileHash .\eFootball-Region-Lock-v1.3.4.zip -Algorithm SHA256
 ```
 
 El resultado tiene que coincidir con el **SHA-256** que aparece en las notas de la versión.
