@@ -105,7 +105,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ToolVersion  = '1.3.0'
+$ToolVersion  = '1.3.1'
 $Credit       = 'Powered by @mrstalex'
 $RuleGroup    = 'eFootball Region Lock'
 $RuleTag      = 'Created by eFootball Region Lock'   # every rule we create starts its description with this
@@ -499,6 +499,20 @@ function Get-GamePorts([int]$ProcessId) {
         Where-Object { $_.LocalPort -gt 0 } | Select-Object -ExpandProperty LocalPort | Sort-Object -Unique)
 }
 
+function Invoke-Pktmon([string[]]$Arguments) {
+    # pktmon writes normal messages (e.g. "packet monitoring is not running") to stderr.
+    # Windows PowerShell 5.1 would turn them into terminating errors, so stderr is discarded
+    # here and only the exit code is used to decide whether a step failed.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & pktmon.exe @Arguments 2>$null | Out-Null
+        $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 function Invoke-PktmonCapture([int[]]$Ports, [int]$Seconds) {
     # Captures only packet HEADERS (first 128 bytes) of UDP traffic on the game's ports,
     # using pktmon, the packet monitor built into Windows. Nothing is changed or delayed.
@@ -507,24 +521,24 @@ function Invoke-PktmonCapture([int[]]$Ports, [int]$Seconds) {
     $etl = Join-Path $work 'capture.etl'
     $txt = Join-Path $work 'capture.txt'
     try {
-        & pktmon.exe stop 2>&1 | Out-Null
-        & pktmon.exe filter remove 2>&1 | Out-Null
+        [void](Invoke-Pktmon @('stop'))              # fine if nothing was running
+        [void](Invoke-Pktmon @('filter', 'remove'))
         $i = 0
         foreach ($port in ($Ports | Select-Object -First 16)) {
             $i++
-            & pktmon.exe filter add ("efrl" + $i) -t UDP -p $port 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "pktmon filter add failed ($LASTEXITCODE)" }
+            $code = Invoke-Pktmon @('filter', 'add', ("efrl" + $i), '-t', 'UDP', '-p', [string]$port)
+            if ($code -ne 0) { throw "pktmon filter add failed (code $code)" }
         }
-        & pktmon.exe start --capture --comp nics --pkt-size 128 --file-name $etl 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "pktmon start failed ($LASTEXITCODE)" }
+        $code = Invoke-Pktmon @('start', '--capture', '--comp', 'nics', '--pkt-size', '128', '--file-name', $etl)
+        if ($code -ne 0) { throw "pktmon start failed (code $code)" }
         Start-Sleep -Seconds $Seconds
-        & pktmon.exe stop 2>&1 | Out-Null
-        & pktmon.exe etl2txt $etl --out $txt 2>&1 | Out-Null
+        [void](Invoke-Pktmon @('stop'))
+        [void](Invoke-Pktmon @('etl2txt', $etl, '--out', $txt))
         if (-not (Test-Path -LiteralPath $txt)) { throw 'pktmon etl2txt produced no output' }
         Get-Content -LiteralPath $txt
     } finally {
-        & pktmon.exe stop 2>&1 | Out-Null
-        & pktmon.exe filter remove 2>&1 | Out-Null
+        [void](Invoke-Pktmon @('stop'))
+        [void](Invoke-Pktmon @('filter', 'remove'))
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
