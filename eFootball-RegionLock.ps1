@@ -12,22 +12,31 @@
     (the match traffic). Login, menus, the store and every other program on
     your PC keep working normally.
 
+    It also includes match tools: check which server the current match uses
+    (with ping, jitter and packet loss), a live monitor and a local match history.
+
+    It never touches the game: no game files, no memory reading, no injection,
+    and it never changes, delays or drops match packets.
+
     Never blocked:
-      - Amazon regions that host eFootball's central services
+      - Amazon regions the game talks to for its central services
         (ap-northeast-1 Tokyo, us-west-2 Oregon, eu-west-1 Ireland).
-      - Amazon Local Zones / edge servers and Global Accelerator addresses
-        (they cannot be located by ping).
+      - Amazon Local Zones / edge servers and Global Accelerator addresses.
       - Google "global" services.
       - Any region whose latency could not be measured.
 
 .PARAMETER Mode
-    Apply  : measure, then create the firewall rules (default).
-    DryRun : measure and show what would be blocked. Changes nothing.
-    Remove : delete every rule created by this tool.
-    Status : show the rules currently in place.
+    Apply   : measure, then create the firewall rules (default).
+    DryRun  : measure and show what would be blocked. Changes nothing.
+    Pick    : measure, then choose by hand which regions to keep.
+    Match   : during a match, show which server it uses (ping, jitter, loss).
+    Monitor : during a match, live ping / jitter / loss line until a key is pressed.
+    History : show the matches saved by Match and Monitor.
+    Remove  : delete every rule created by this tool.
+    Status  : show the rules currently in place.
 
 .PARAMETER MaxPing
-    Highest latency (ms) a region may have to stay allowed. Default 100.
+    Highest estimated latency (ms) a region may have to stay allowed. Default 100.
 
 .PARAMETER MaxServers
     Keep at most this many regions (the closest ones). 0 = no limit. Default 4.
@@ -46,6 +55,12 @@
     Ask for MaxPing and MaxServers interactively (used by Run.bat option 3).
     Only whole numbers inside the allowed range are accepted.
 
+.PARAMETER CaptureSeconds
+    Match / Monitor: how many seconds of the game's traffic headers to look at. Default 6.
+
+.PARAMETER ProcessName
+    Match / Monitor: process to inspect. Default eFootball. Only change it for testing.
+
 .EXAMPLE
     .\eFootball-RegionLock.ps1 -Mode DryRun
 
@@ -53,11 +68,11 @@
     .\eFootball-RegionLock.ps1 -MaxPing 80 -MaxServers 3
 
 .EXAMPLE
-    .\eFootball-RegionLock.ps1 -Mode Remove
+    .\eFootball-RegionLock.ps1 -Mode Match
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Apply', 'DryRun', 'Remove', 'Status')]
+    [ValidateSet('Apply', 'DryRun', 'Pick', 'Match', 'Monitor', 'History', 'Remove', 'Status')]
     [string]$Mode = 'Apply',
 
     [ValidateRange(10, 500)]
@@ -78,13 +93,19 @@ param(
 
     [switch]$AskSettings,
 
+    [ValidateRange(3, 30)]
+    [int]$CaptureSeconds = 6,
+
+    [ValidatePattern('^[A-Za-z0-9_.-]+$')]
+    [string]$ProcessName = 'eFootball',
+
     [switch]$Yes
 )
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$ToolVersion  = '1.2.0'
+$ToolVersion  = '1.3.0'
 $Credit       = 'Powered by @mrstalex'
 $RuleGroup    = 'eFootball Region Lock'
 $RuleTag      = 'Created by eFootball Region Lock'   # every rule we create starts its description with this
@@ -94,6 +115,9 @@ $ProtectedAws = @('ap-northeast-1', 'us-west-2', 'eu-west-1')
 $GcpRangesUrl = 'https://www.gstatic.com/ipranges/cloud.json'
 $AwsRangesUrl = 'https://ip-ranges.amazonaws.com/ip-ranges.json'
 $GcpProbesUrl = 'https://gcping.com/api/endpoints'
+
+$DataDir      = Join-Path $env:LOCALAPPDATA 'eFootball Region Lock'
+$HistoryFile  = Join-Path $DataDir 'match-history.csv'
 
 $AwsNames = @{
     'us-east-1' = 'N. Virginia'; 'us-east-2' = 'Ohio'; 'us-west-1' = 'N. California'; 'us-west-2' = 'Oregon'
@@ -105,6 +129,17 @@ $AwsNames = @{
     'ap-southeast-1' = 'Singapore'; 'ap-southeast-2' = 'Sydney'; 'ap-southeast-3' = 'Jakarta'
     'ap-southeast-4' = 'Melbourne'; 'ap-southeast-5' = 'Malaysia'; 'ap-southeast-7' = 'Thailand'
     'ap-northeast-1' = 'Tokyo'; 'ap-northeast-2' = 'Seoul'; 'ap-northeast-3' = 'Osaka'
+}
+
+# City codes used in Amazon Local Zone names (e.g. us-east-1-lim-1 = Lima)
+$AwsZoneCities = @{
+    'lim' = 'Lima'; 'bue' = 'Buenos Aires'; 'scl' = 'Santiago'; 'bog' = 'Bogota'; 'qro' = 'Queretaro'
+    'mia' = 'Miami'; 'atl' = 'Atlanta'; 'bos' = 'Boston'; 'chi' = 'Chicago'; 'dfw' = 'Dallas'; 'hou' = 'Houston'
+    'iah' = 'Houston'; 'kc' = 'Kansas City'; 'den' = 'Denver'; 'msp' = 'Minneapolis'; 'nyc' = 'New York'
+    'phl' = 'Philadelphia'; 'lax' = 'Los Angeles'; 'las' = 'Las Vegas'; 'phx' = 'Phoenix'; 'pdx' = 'Portland'
+    'sea' = 'Seattle'; 'los' = 'Lagos'; 'ham' = 'Hamburg'; 'waw' = 'Warsaw'; 'ath' = 'Athens'; 'ist' = 'Istanbul'
+    'mct' = 'Muscat'; 'ccu' = 'Kolkata'; 'del' = 'Delhi'; 'bkk' = 'Bangkok'; 'tpe' = 'Taipei'; 'mnl' = 'Manila'
+    'per' = 'Perth'; 'akl' = 'Auckland'; 'hel' = 'Helsinki'; 'cph' = 'Copenhagen'; 'mad' = 'Madrid'
 }
 
 # ---------------------------------------------------------------- helpers
@@ -363,17 +398,421 @@ function Show-Footer {
     Write-Host ''
 }
 
+function Get-CloudLists {
+    # Official IP lists from Google and Amazon, plus the gcping probe list. Returns $null on failure.
+    try {
+        $g = Invoke-RestMethod -Uri $GcpRangesUrl -TimeoutSec 60
+        $a = Invoke-RestMethod -Uri $AwsRangesUrl -TimeoutSec 60
+        $wc = New-Object Net.WebClient
+        $wc.Encoding = [Text.Encoding]::UTF8
+        $p = $wc.DownloadString($GcpProbesUrl) | ConvertFrom-Json
+        $wc.Dispose()
+    } catch {
+        Say "Download failed: $($_.Exception.Message)" "Fallo la descarga: $($_.Exception.Message)" 'Red'
+        return $null
+    }
+    $gc = @($g.prefixes).Count; $ac = @($a.prefixes).Count; $pc = @($p.PSObject.Properties).Count
+    if ($gc -lt 100 -or $ac -lt 500 -or $pc -lt 10) {
+        Say ("The downloaded lists look incomplete (Google: {0}, Amazon: {1}, probes: {2})." -f $gc, $ac, $pc) `
+            ("Las listas descargadas parecen incompletas (Google: {0}, Amazon: {1}, puntos de prueba: {2})." -f $gc, $ac, $pc) 'Red'
+        return $null
+    }
+    [pscustomobject]@{ Gcp = $g; Aws = $a; Probes = $p }
+}
+
+# ---------------------------------------------------------------- IPv4 + cloud lookup
+
+function ConvertTo-IPv4Number([string]$Ip) {
+    $addr = $null
+    if (-not [Net.IPAddress]::TryParse($Ip, [ref]$addr)) { return $null }
+    if ($addr.AddressFamily -ne 'InterNetwork') { return $null }
+    $b = $addr.GetAddressBytes()
+    [int64]$b[0] * 16777216 + [int64]$b[1] * 65536 + [int64]$b[2] * 256 + [int64]$b[3]
+}
+
+function Test-PublicIPv4([string]$Ip) {
+    $n = ConvertTo-IPv4Number $Ip
+    if ($null -eq $n) { return $false }
+    $private = @(
+        @('10.0.0.0', 8), @('172.16.0.0', 12), @('192.168.0.0', 16), @('100.64.0.0', 10),
+        @('127.0.0.0', 8), @('169.254.0.0', 16), @('0.0.0.0', 8), @('224.0.0.0', 3)
+    )
+    foreach ($r in $private) {
+        $mask = (4294967295 -shl (32 - $r[1])) -band 4294967295
+        if (($n -band $mask) -eq ((ConvertTo-IPv4Number $r[0]) -band $mask)) { return $false }
+    }
+    $true
+}
+
+function New-CloudTable($Lists) {
+    # Flat list of IPv4 networks with their cloud, region and city, for fast lookups.
+    $rows = New-Object System.Collections.Generic.List[object]
+    function Add-Net($Cidr, $Cloud, $Region, $Location, $Kind) {
+        if (-not (Test-Cidr $Cidr)) { return }
+        $parts = $Cidr.Split('/')
+        $net = ConvertTo-IPv4Number $parts[0]
+        if ($null -eq $net) { return }
+        $len = [int]$parts[1]
+        $mask = 0
+        if ($len -gt 0) { $mask = (4294967295 -shl (32 - $len)) -band 4294967295 }
+        $rows.Add([pscustomobject]@{ Net = ($net -band $mask); Mask = $mask; Len = $len; Cloud = $Cloud; Region = $Region; Location = $Location; Kind = $Kind })
+    }
+    foreach ($p in $Lists.Gcp.prefixes) {
+        if (-not $p.PSObject.Properties['ipv4Prefix']) { continue }
+        $loc = ''
+        $probe = $Lists.Probes.PSObject.Properties[$p.scope]
+        if ($probe) { $loc = [string]$probe.Value.RegionName }
+        Add-Net $p.ipv4Prefix 'Google Cloud' $p.scope $loc 'region'
+    }
+    foreach ($p in $Lists.Aws.prefixes) {
+        if ($p.service -ne 'EC2' -and $p.service -ne 'GLOBALACCELERATOR') { continue }
+        $region = $p.network_border_group
+        $loc = ''
+        $kind = 'region'
+        if ($p.service -eq 'GLOBALACCELERATOR') {
+            $kind = 'edge'
+        } elseif ($p.network_border_group -ne $p.region) {
+            $kind = 'zone'
+            if ($p.network_border_group -match '-([a-z]{2,3})-\d+$' -and $AwsZoneCities.ContainsKey($Matches[1])) { $loc = $AwsZoneCities[$Matches[1]] }
+        } elseif ($AwsNames.ContainsKey($p.region)) {
+            $loc = $AwsNames[$p.region]
+        }
+        Add-Net $p.ip_prefix 'Amazon AWS' $region $loc $kind
+    }
+    $rows
+}
+
+function Find-Cloud([string]$Ip, $Table) {
+    # Most specific match wins.
+    $n = ConvertTo-IPv4Number $Ip
+    if ($null -eq $n) { return $null }
+    $best = $null
+    foreach ($r in $Table) {
+        if (($n -band $r.Mask) -eq $r.Net) {
+            if ($null -eq $best -or $r.Len -gt $best.Len) { $best = $r }
+        }
+    }
+    $best
+}
+
+# ---------------------------------------------------------------- match detection (pktmon)
+
+function Get-GamePorts([int]$ProcessId) {
+    @(Get-NetUDPEndpoint -OwningProcess $ProcessId -ErrorAction SilentlyContinue |
+        Where-Object { $_.LocalPort -gt 0 } | Select-Object -ExpandProperty LocalPort | Sort-Object -Unique)
+}
+
+function Invoke-PktmonCapture([int[]]$Ports, [int]$Seconds) {
+    # Captures only packet HEADERS (first 128 bytes) of UDP traffic on the game's ports,
+    # using pktmon, the packet monitor built into Windows. Nothing is changed or delayed.
+    $work = Join-Path $env:TEMP ("efrl-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    $etl = Join-Path $work 'capture.etl'
+    $txt = Join-Path $work 'capture.txt'
+    try {
+        & pktmon.exe stop 2>&1 | Out-Null
+        & pktmon.exe filter remove 2>&1 | Out-Null
+        $i = 0
+        foreach ($port in ($Ports | Select-Object -First 16)) {
+            $i++
+            & pktmon.exe filter add ("efrl" + $i) -t UDP -p $port 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "pktmon filter add failed ($LASTEXITCODE)" }
+        }
+        & pktmon.exe start --capture --comp nics --pkt-size 128 --file-name $etl 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "pktmon start failed ($LASTEXITCODE)" }
+        Start-Sleep -Seconds $Seconds
+        & pktmon.exe stop 2>&1 | Out-Null
+        & pktmon.exe etl2txt $etl --out $txt 2>&1 | Out-Null
+        if (-not (Test-Path -LiteralPath $txt)) { throw 'pktmon etl2txt produced no output' }
+        Get-Content -LiteralPath $txt
+    } finally {
+        & pktmon.exe stop 2>&1 | Out-Null
+        & pktmon.exe filter remove 2>&1 | Out-Null
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-RemoteCounts([string[]]$Lines, [int[]]$Ports) {
+    # Reads "a.b.c.d.port > e.f.g.h.port:" pairs and counts packets per public remote address.
+    $counts = @{}
+    $rx = [regex]'(\d{1,3}(?:\.\d{1,3}){3})\.(\d{1,5}) > (\d{1,3}(?:\.\d{1,3}){3})\.(\d{1,5}):'
+    foreach ($line in $Lines) {
+        $m = $rx.Match($line)
+        if (-not $m.Success) { continue }
+        $src = $m.Groups[1].Value; $sport = [int]$m.Groups[2].Value
+        $dst = $m.Groups[3].Value; $dport = [int]$m.Groups[4].Value
+        $remote = $null
+        if ($Ports -contains $sport) { $remote = $dst } elseif ($Ports -contains $dport) { $remote = $src }
+        if (-not $remote -or -not (Test-PublicIPv4 $remote)) { continue }
+        if ($counts.ContainsKey($remote)) { $counts[$remote]++ } else { $counts[$remote] = 1 }
+    }
+    $counts
+}
+
+function Find-MatchPeer {
+    # Returns @{ Ip; Packets; ProcessId } for the busiest public UDP peer of the game, or $null.
+    $proc = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $proc) {
+        Say "$ProcessName is not running. Open the game and start (or join) a match first." `
+            "$ProcessName no esta abierto. Abre el juego y entra en un partido primero." 'Yellow'
+        return $null
+    }
+    $ports = Get-GamePorts $proc.Id
+    if ($ports.Count -eq 0) {
+        Say 'The game has no network ports open right now. Try again once the match starts.' `
+            'El juego no tiene puertos de red abiertos ahora mismo. Vuelve a intentarlo cuando empiece el partido.' 'Yellow'
+        return $null
+    }
+    Say ("Looking at {0} seconds of the game's traffic (headers only, nothing is changed)..." -f $CaptureSeconds) `
+        ("Observando {0} segundos del trafico del juego (solo cabeceras, no se cambia nada)..." -f $CaptureSeconds)
+    try {
+        $lines = Invoke-PktmonCapture $ports $CaptureSeconds
+    } catch {
+        Say "Packet capture failed: $($_.Exception.Message)" "Fallo la captura: $($_.Exception.Message)" 'Red'
+        return $null
+    }
+    $counts = Get-RemoteCounts $lines $ports
+    if ($counts.Count -eq 0) { return [pscustomobject]@{ Ip = $null; Packets = 0; ProcessId = $proc.Id } }
+    $top = $counts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
+    [pscustomobject]@{ Ip = $top.Key; Packets = [int]$top.Value; ProcessId = $proc.Id }
+}
+
+function Measure-Icmp([string]$Ip, [int]$Count = 10, [int]$IntervalMs = 300) {
+    $ping = New-Object Net.NetworkInformation.Ping
+    $vals = @()
+    $lost = 0
+    for ($i = 0; $i -lt $Count; $i++) {
+        try {
+            $r = $ping.Send($Ip, 1000)
+            if ($r.Status -eq 'Success') { $vals += [double]$r.RoundtripTime } else { $lost++ }
+        } catch { $lost++ }
+        Start-Sleep -Milliseconds $IntervalMs
+    }
+    $ping.Dispose()
+    $stats = Get-Stats $vals
+    [pscustomobject]@{
+        Ping   = $(if ($stats) { $stats.Median } else { $null })
+        Jitter = $(if ($stats) { $stats.Jitter } else { $null })
+        Loss   = [int][math]::Round(100 * $lost / $Count)
+    }
+}
+
+function Get-Quality($Ping, $Jitter, $Loss) {
+    if ($null -eq $Ping) { return (T 'Unknown' 'Desconocida') }
+    if ($Ping -le 60 -and $Jitter -le 10 -and $Loss -eq 0) { return (T 'Good' 'Buena') }
+    if ($Ping -le 100 -and $Jitter -le 25 -and $Loss -le 2) { return (T 'Fair' 'Regular') }
+    T 'Poor' 'Mala'
+}
+
+function Get-MatchInfo($Peer, $Table) {
+    $cloud = Find-Cloud $Peer.Ip $Table
+    if ($cloud) {
+        $where = $cloud.Region
+        if ($cloud.Location) { $where = "$($cloud.Region) ($($cloud.Location))" }
+        $type = T 'Game server' 'Servidor de juego'
+        if ($cloud.Kind -eq 'edge') {
+            $type = T 'Game server (Amazon edge network)' 'Servidor de juego (red edge de Amazon)'
+            $where = T 'Amazon edge address (exact city cannot be identified)' 'Direccion edge de Amazon (no se puede saber la ciudad exacta)'
+        }
+        [pscustomobject]@{ Type = 'Server'; TypeText = $type; Cloud = $cloud.Cloud; Region = $cloud.Region; Location = $cloud.Location; Where = $where }
+    } else {
+        [pscustomobject]@{ Type = 'P2P'; TypeText = (T 'Peer-to-peer (directly with the other player)' 'Peer-to-peer (directo con el otro jugador)');
+                           Cloud = '-'; Region = '-'; Location = '-'; Where = '-' }
+    }
+}
+
+function Save-History($Info, $Stats, [string]$Source) {
+    # Saved only on this PC. The opponent's IP address is never saved.
+    try {
+        if (-not (Test-Path -LiteralPath $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
+        [pscustomobject]@{
+            Date     = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+            Source   = $Source
+            Type     = $Info.Type
+            Cloud    = $Info.Cloud
+            Region   = $Info.Region
+            Location = $Info.Location
+            PingMs   = $Stats.Ping
+            JitterMs = $Stats.Jitter
+            LossPct  = $Stats.Loss
+            Quality  = (Get-Quality $Stats.Ping $Stats.Jitter $Stats.Loss)
+        } | Export-Csv -LiteralPath $HistoryFile -Append -NoTypeInformation -Encoding UTF8
+    } catch {
+        Say "Could not save the match history: $($_.Exception.Message)" "No se pudo guardar el historial: $($_.Exception.Message)" 'Yellow'
+    }
+}
+
+function Show-MatchCard($Info, $Stats, [int]$Packets) {
+    $color = 'Green'
+    $q = Get-Quality $Stats.Ping $Stats.Jitter $Stats.Loss
+    if ($q -eq (T 'Fair' 'Regular')) { $color = 'Yellow' } elseif ($q -ne (T 'Good' 'Buena')) { $color = 'Red' }
+    Write-Host ''
+    Say '  Current match' '  Partido actual' 'Cyan'
+    Write-Host ('  ' + ('-' * 40)) -ForegroundColor DarkGray
+    Write-Host ("  {0,-11}: {1}" -f (T 'Type' 'Tipo'), $Info.TypeText)
+    if ($Info.Type -eq 'Server') {
+        Write-Host ("  {0,-11}: {1}" -f (T 'Cloud' 'Nube'), $Info.Cloud)
+        Write-Host ("  {0,-11}: {1}" -f (T 'Region' 'Region'), $Info.Where)
+    }
+    if ($null -eq $Stats.Ping) {
+        Write-Host ("  {0,-11}: {1}" -f 'Ping', (T 'no reply (this server ignores ping)' 'sin respuesta (este servidor ignora el ping)')) -ForegroundColor Yellow
+    } else {
+        Write-Host ("  {0,-11}: {1} ms   Jitter: {2} ms   {3}: {4}%" -f 'Ping', $Stats.Ping, $Stats.Jitter, (T 'Loss' 'Perdida'), $Stats.Loss) -ForegroundColor $color
+    }
+    Write-Host ("  {0,-11}: {1}" -f (T 'Quality' 'Calidad'), $q) -ForegroundColor $color
+    Write-Host ("  {0,-11}: {1} {2}" -f (T 'Traffic' 'Trafico'), $Packets, (T "packets in $CaptureSeconds s" "paquetes en $CaptureSeconds s")) -ForegroundColor DarkGray
+    if ($Info.Type -eq 'P2P') {
+        Write-Host ''
+        Say '  This match goes directly between players, so the firewall rules of this tool do not affect it.' `
+            '  Este partido va directo entre jugadores, asi que las reglas de esta herramienta no lo afectan.' 'Yellow'
+    }
+}
+
+function Show-History {
+    if (-not (Test-Path -LiteralPath $HistoryFile)) {
+        Say 'No matches saved yet. Use "Check current match" or "Live monitor" during a match.' `
+            'Todavia no hay partidos guardados. Usa "Revisar partido actual" o "Monitor en vivo" durante un partido.' 'Yellow'
+        return
+    }
+    $rows = @(Import-Csv -LiteralPath $HistoryFile)
+    Say ("Last matches (saved in {0}):" -f $HistoryFile) ("Ultimos partidos (guardados en {0}):" -f $HistoryFile) 'Cyan'
+    $rows | Select-Object -Last 20 |
+        Format-Table @{ Label = (T 'Date' 'Fecha'); Expression = { $_.Date } },
+                     @{ Label = (T 'Type' 'Tipo'); Expression = { $_.Type } },
+                     @{ Label = (T 'Cloud' 'Nube'); Expression = { $_.Cloud } },
+                     @{ Label = (T 'Region' 'Region'); Expression = { $_.Region } },
+                     @{ Label = (T 'City' 'Ciudad'); Expression = { $_.Location } },
+                     @{ Label = 'Ping'; Expression = { $_.PingMs }; Align = 'Right' },
+                     @{ Label = 'Jitter'; Expression = { $_.JitterMs }; Align = 'Right' },
+                     @{ Label = (T 'Loss %' 'Perdida %'); Expression = { $_.LossPct }; Align = 'Right' },
+                     @{ Label = (T 'Quality' 'Calidad'); Expression = { $_.Quality } } -AutoSize | Out-Host
+    Say 'Summary by server:' 'Resumen por servidor:' 'Cyan'
+    $rows | Group-Object { if ($_.Type -eq 'P2P') { 'Peer-to-peer' } else { "$($_.Cloud) $($_.Region) $($_.Location)".Trim() } } | ForEach-Object {
+        $pings = @($_.Group | Where-Object { $_.PingMs -match '^\d+$' } | ForEach-Object { [int]$_.PingMs })
+        $avg = '-'
+        if ($pings.Count -gt 0) { $avg = [int][math]::Round(($pings | Measure-Object -Average).Average) }
+        [pscustomobject]@{ Server = $_.Name; Matches = $_.Count; AvgPing = $avg }
+    } | Sort-Object Matches -Descending |
+        Format-Table @{ Label = (T 'Server' 'Servidor'); Expression = { $_.Server } },
+                     @{ Label = (T 'Matches' 'Partidos'); Expression = { $_.Matches }; Align = 'Right' },
+                     @{ Label = (T 'Avg ping' 'Ping medio'); Expression = { $_.AvgPing }; Align = 'Right' } -AutoSize | Out-Host
+}
+
+function Start-LiveMonitor([string]$Ip, [int]$ProcessId) {
+    $ping = New-Object Net.NetworkInformation.Ping
+    $window = New-Object System.Collections.Generic.List[object]
+    $all = New-Object System.Collections.Generic.List[double]
+    $sent = 0; $lostTotal = 0; $failStreak = 0
+    Say 'Live monitor running. Press any key to stop.' 'Monitor en vivo activo. Pulsa cualquier tecla para parar.' 'Cyan'
+    Write-Host ''
+    while ($true) {
+        $tick = [Diagnostics.Stopwatch]::StartNew()
+        $stop = $false
+        try { if ([Console]::KeyAvailable) { [void][Console]::ReadKey($true); $stop = $true } } catch { }
+        if ($stop) { break }
+        if (-not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) { break }
+
+        $rtt = $null
+        try { $r = $ping.Send($Ip, 1000); if ($r.Status -eq 'Success') { $rtt = [double]$r.RoundtripTime } } catch { }
+        $sent++
+        if ($null -eq $rtt) { $lostTotal++; $failStreak++ } else { $failStreak = 0; $all.Add($rtt) }
+        $window.Add($rtt)
+        if ($window.Count -gt 30) { $window.RemoveAt(0) }
+
+        $ok = @($window | Where-Object { $null -ne $_ })
+        $s = $null
+        if ($ok.Count -ge 3) { $s = Get-Stats ([double[]]$ok) }
+        $loss = [int][math]::Round(100 * ($window.Count - $ok.Count) / $window.Count)
+        $now = '---'; if ($null -ne $rtt) { $now = "$rtt ms" }
+        $med = '-'; $jit = '-'
+        if ($s) { $med = "$($s.Median) ms"; $jit = "$($s.Jitter) ms" }
+        $q = '-'; if ($s) { $q = Get-Quality $s.Median $s.Jitter $loss }
+        $line = "  Ping {0,-7} | {1} {2,-7} | Jitter {3,-6} | {4} {5,3}% | {6}" -f $now, (T 'median' 'mediana'), $med, $jit, (T 'loss' 'perdida'), $loss, $q
+        Write-Host ("`r" + $line.PadRight(95)) -NoNewline
+
+        if ($failStreak -ge 10) {
+            Write-Host ''
+            Say 'No replies for 10 seconds: the match probably ended or the server ignores ping.' `
+                'Sin respuesta durante 10 segundos: probablemente termino el partido o el servidor ignora el ping.' 'Yellow'
+            break
+        }
+        $wait = 1000 - [int]$tick.ElapsedMilliseconds
+        if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
+    }
+    Write-Host ''
+    $ping.Dispose()
+    $stats = Get-Stats ([double[]]$all.ToArray())
+    [pscustomobject]@{
+        Ping   = $(if ($stats) { $stats.Median } else { $null })
+        Jitter = $(if ($stats) { $stats.Jitter } else { $null })
+        Loss   = $(if ($sent -gt 0) { [int][math]::Round(100 * $lostTotal / $sent) } else { 0 })
+        Sent   = $sent
+    }
+}
+
+# ---------------------------------------------------------------- manual region picker
+
+function Invoke-ManualPick($Results, $AllowedKeys) {
+    # Lets the user switch regions on/off. Protected regions, regions without data and
+    # AlwaysAllow regions can never be blocked, so they are shown as locked.
+    $list = @($Results | Sort-Object @{ Expression = { if ($null -eq $_.Ping) { 99999 } else { $_.Ping } } })
+    $keep = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($k in $AllowedKeys) { [void]$keep.Add($k) }
+    while ($true) {
+        Write-Host ''
+        Say '  #   Keep  Cloud   Region                   City              Latency' '  #   Usar  Nube    Region                   Ciudad            Latencia' 'Cyan'
+        for ($i = 0; $i -lt $list.Count; $i++) {
+            $r = $list[$i]
+            $key = "$($r.Provider)/$($r.Region)"
+            $locked = ($null -eq $r.Ping) -or ($AlwaysAllow -contains $r.Region) -or ($r.Provider -eq 'Amazon' -and $ProtectedAws -contains $r.Region)
+            if ($locked) { $mark = ' * ' } elseif ($keep.Contains($key)) { $mark = '[x]' } else { $mark = '[ ]' }
+            $lat = '-'; if ($null -ne $r.Ping) { $lat = "$($r.Ping) ms" }
+            $color = 'DarkGray'
+            if ($locked) { $color = 'DarkCyan' } elseif ($keep.Contains($key)) { $color = 'Green' }
+            Write-Host ("  {0,3} {1}  {2,-7} {3,-24} {4,-17} {5,8}" -f ($i + 1), $mark, $r.Provider, $r.Region, $r.Location, $lat) -ForegroundColor $color
+        }
+        Write-Host ''
+        Say '  [x] kept   [ ] blocked   * always open (game services, no data or your list)' '  [x] se usa   [ ] bloqueada   * siempre abierta (servicios del juego, sin datos o tu lista)' 'DarkGray'
+        $kept = @($list | Where-Object { $keep.Contains("$($_.Provider)/$($_.Region)") })
+        Say ("  Regions kept: {0}" -f $kept.Count) ("  Regiones que se usan: {0}" -f $kept.Count) 'Green'
+        $raw = Read-Host (T 'Numbers to switch on/off (e.g. 3 7 12), Enter = done, Q = cancel' 'Numeros para activar/desactivar (ej. 3 7 12), Enter = listo, Q = cancelar')
+        if ($null -eq $raw) { $raw = '' }
+        $raw = $raw.Trim()
+        if ($raw -match '^(q|Q)$') { return $null }
+        if ($raw -eq '') {
+            if ($kept.Count -eq 0) {
+                Say 'Keep at least one region, or you will not find matches.' 'Deja al menos una region, o no encontraras partidos.' 'Yellow'
+                continue
+            }
+            return ,$keep
+        }
+        foreach ($tok in ($raw -split '[\s,]+')) {
+            if ($tok -notmatch '^\d{1,3}$') { Say "  Ignored: $tok" "  Ignorado: $tok" 'Yellow'; continue }
+            $idx = [int]$tok - 1
+            if ($idx -lt 0 -or $idx -ge $list.Count) { Say "  Out of range: $tok" "  Fuera de rango: $tok" 'Yellow'; continue }
+            $r = $list[$idx]
+            $key = "$($r.Provider)/$($r.Region)"
+            $locked = ($null -eq $r.Ping) -or ($AlwaysAllow -contains $r.Region) -or ($r.Provider -eq 'Amazon' -and $ProtectedAws -contains $r.Region)
+            if ($locked) { Say "  $($r.Region) is always open." "  $($r.Region) siempre esta abierta." 'Yellow'; continue }
+            if ($keep.Contains($key)) { [void]$keep.Remove($key) } else { [void]$keep.Add($key) }
+        }
+    }
+}
+
 # ---------------------------------------------------------------- main
 
 Show-Banner
 
-if (($Mode -eq 'Apply' -or $Mode -eq 'Remove') -and -not (Test-Admin)) {
-    Say 'This mode needs administrator rights. Right-click Run.bat and choose "Run as administrator".' `
-        'Este modo necesita permisos de administrador. Haz clic derecho en Run.bat y elige "Ejecutar como administrador".' 'Red'
+$needsAdmin = @('Apply', 'Pick', 'Match', 'Monitor', 'Remove')
+if ($needsAdmin -contains $Mode -and -not (Test-Admin)) {
+    Say 'This option needs administrator rights. Right-click Run.bat and choose "Run as administrator".' `
+        'Esta opcion necesita permisos de administrador. Haz clic derecho en Run.bat y elige "Ejecutar como administrador".' 'Red'
     exit 1
 }
 
 if ($Mode -eq 'Status') { Show-Status; Show-Footer; exit 0 }
+
+if ($Mode -eq 'History') { Show-History; Show-Footer; exit 0 }
 
 if ($Mode -eq 'Remove') {
     $n = Remove-ToolRules
@@ -381,6 +820,47 @@ if ($Mode -eq 'Remove') {
     Show-Footer
     exit 0
 }
+
+if ($Mode -eq 'Match' -or $Mode -eq 'Monitor') {
+    if (-not (Get-Command pktmon.exe -ErrorAction SilentlyContinue) -or [Environment]::OSVersion.Version.Build -lt 19041) {
+        Say 'This option needs Windows 10 version 2004 or newer (pktmon).' 'Esta opcion necesita Windows 10 version 2004 o superior (pktmon).' 'Red'
+        exit 1
+    }
+    $peer = Find-MatchPeer
+    if (-not $peer) { Show-Footer; exit 1 }
+    $minPackets = 10 * $CaptureSeconds
+    if (-not $peer.Ip -or $peer.Packets -lt $minPackets) {
+        Say 'No match traffic found. Run this while a match is being played (not in the menus).' `
+            'No se encontro trafico de partido. Usalo mientras se juega un partido (no en los menus).' 'Yellow'
+        Show-Footer
+        exit 1
+    }
+    Say 'Identifying the server with the official Google and Amazon IP lists...' 'Identificando el servidor con las listas oficiales de IP de Google y Amazon...'
+    $lists = Get-CloudLists
+    if (-not $lists) { Show-Footer; exit 1 }
+    $info = Get-MatchInfo $peer (New-CloudTable $lists)
+
+    if ($Mode -eq 'Match') {
+        Say 'Measuring ping, jitter and packet loss (10 pings)...' 'Midiendo ping, jitter y perdida de paquetes (10 pings)...'
+        $stats = Measure-Icmp $peer.Ip 10 300
+        Show-MatchCard $info $stats $peer.Packets
+        Save-History $info $stats 'Check'
+    } else {
+        Write-Host ''
+        Write-Host ("  {0}: {1}   {2}" -f (T 'Server' 'Servidor'), $info.Where, $info.TypeText) -ForegroundColor Cyan
+        $stats = Start-LiveMonitor $peer.Ip $peer.ProcessId
+        if ($stats.Sent -gt 0) {
+            Show-MatchCard $info $stats $peer.Packets
+            Save-History $info $stats 'Monitor'
+        }
+    }
+    Write-Host ''
+    Say 'Saved in your match history (only on this PC, without the opponent''s IP).' 'Guardado en tu historial (solo en este PC, sin la IP del rival).' 'DarkGray'
+    Show-Footer
+    exit 0
+}
+
+# --- Apply / DryRun / Pick from here on
 
 # --- interactive settings (Run.bat option 3): validated here, never passed through CMD
 if ($AskSettings) {
@@ -405,7 +885,7 @@ if (-not $GamePath) { $packages = @(Find-GamePackages) }
 if ($exes.Count -eq 0 -and $packages.Count -eq 0) {
     Say 'eFootball was not found automatically (Steam / Xbox app).' 'No se encontro eFootball automaticamente (Steam / app de Xbox).' 'Yellow'
     Say 'Run again with: -GamePath "C:\path\to\eFootball.exe"' 'Vuelve a ejecutarlo con: -GamePath "C:\ruta\a\eFootball.exe"' 'Yellow'
-    if ($Mode -eq 'Apply') { exit 1 }
+    if ($Mode -ne 'DryRun') { exit 1 }
 } else {
     Say 'Game found:' 'Juego encontrado:'
     $exes | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
@@ -417,30 +897,11 @@ $targets += @($exes | ForEach-Object { @{ Program = $_ } })
 $targets += @($packages | ForEach-Object { @{ Package = $_.Sid } })
 Write-Host ''
 
-# --- official IP lists + probe list
+# --- official IP lists + probe list (validated)
 Say 'Downloading official IP lists from Google and Amazon...' 'Descargando las listas oficiales de IP de Google y Amazon...'
-try {
-    $gcp = Invoke-RestMethod -Uri $GcpRangesUrl -TimeoutSec 60
-    $aws = Invoke-RestMethod -Uri $AwsRangesUrl -TimeoutSec 60
-    $wc = New-Object Net.WebClient
-    $wc.Encoding = [Text.Encoding]::UTF8
-    $gcpProbes = $wc.DownloadString($GcpProbesUrl) | ConvertFrom-Json
-    $wc.Dispose()
-} catch {
-    Say "Download failed: $($_.Exception.Message)" "Fallo la descarga: $($_.Exception.Message)" 'Red'
-    Say 'Nothing was changed.' 'No se cambio nada.' 'Red'
-    exit 1
-}
-
-# --- sanity checks: refuse to continue with incomplete or malformed lists
-$gcpCount = @($gcp.prefixes).Count
-$awsCount = @($aws.prefixes).Count
-$probeCount = @($gcpProbes.PSObject.Properties).Count
-if ($gcpCount -lt 100 -or $awsCount -lt 500 -or $probeCount -lt 10) {
-    Say ("The downloaded lists look incomplete (Google: {0}, Amazon: {1}, probes: {2}). Nothing was changed." -f $gcpCount, $awsCount, $probeCount) `
-        ("Las listas descargadas parecen incompletas (Google: {0}, Amazon: {1}, puntos de prueba: {2}). No se cambio nada." -f $gcpCount, $awsCount, $probeCount) 'Red'
-    exit 1
-}
+$lists = Get-CloudLists
+if (-not $lists) { Say 'Nothing was changed.' 'No se cambio nada.' 'Red'; exit 1 }
+$gcp = $lists.Gcp; $aws = $lists.Aws; $gcpProbes = $lists.Probes
 
 # --- regions to measure (only well-formed region codes)
 $regionPattern = '^[a-z0-9-]+$'
@@ -462,7 +923,7 @@ Say ("Measuring latency to {0} regions, 5 samples each (about 2-3 minutes)..." -
 function New-Result($Provider, $Region, $Location, $Stats) {
     $ping = $null; $jit = $null
     if ($Stats) { $ping = $Stats.Median; $jit = $Stats.Jitter }
-    [pscustomobject]@{ Provider = $Provider; Region = $Region; Location = $Location; Ping = $ping; Jitter = $jit }
+    [pscustomobject]@{ Provider = $Provider; Region = $Region; Location = $Location; Ping = $ping; Jitter = $jit; Decision = ''; Blocked = $false }
 }
 
 foreach ($r in $gcpRegions) {
@@ -486,7 +947,7 @@ foreach ($r in $awsRegions) {
 Write-Progress -Activity 'eFootball Region Lock' -Completed
 $http.Dispose()
 
-# --- decide
+# --- decide (automatic)
 $allowedKeys = New-Object 'System.Collections.Generic.HashSet[string]'
 $count = 0
 foreach ($row in ($results | Where-Object { $null -ne $_.Ping } | Sort-Object Ping)) {
@@ -497,21 +958,32 @@ foreach ($row in ($results | Where-Object { $null -ne $_.Ping } | Sort-Object Pi
     }
 }
 
+# --- manual choice (Pick)
+$keptLabel = T 'ALLOWED (close)' 'PERMITIDO (cerca)'
+if ($Mode -eq 'Pick') {
+    Write-Host ''
+    Say 'Automatic suggestion is pre-selected. Switch regions on or off by number.' 'La sugerencia automatica viene marcada. Activa o desactiva regiones por numero.' 'Cyan'
+    $picked = Invoke-ManualPick $results $allowedKeys
+    if ($null -eq $picked) { Say 'Cancelled. Nothing was changed.' 'Cancelado. No se cambio nada.' 'Yellow'; exit 0 }
+    $allowedKeys = $picked
+    $keptLabel = T 'ALLOWED (your choice)' 'PERMITIDO (tu eleccion)'
+}
+
+$blockedLabel = T 'BLOCKED' 'BLOQUEADO'
 foreach ($row in $results) {
     $key = "$($row.Provider)/$($row.Region)"
     if ($allowedKeys.Contains($key)) {
-        $decision = T 'ALLOWED (close)' 'PERMITIDO (cerca)'
+        $row.Decision = $keptLabel
     } elseif ($AlwaysAllow -contains $row.Region) {
-        $decision = T 'ALLOWED (your list)' 'PERMITIDO (tu lista)'
+        $row.Decision = T 'ALLOWED (your list)' 'PERMITIDO (tu lista)'
     } elseif ($row.Provider -eq 'Amazon' -and $ProtectedAws -contains $row.Region) {
-        $decision = T 'ALLOWED (game services)' 'PERMITIDO (servicios del juego)'
+        $row.Decision = T 'ALLOWED (game services)' 'PERMITIDO (servicios del juego)'
     } elseif ($null -eq $row.Ping) {
-        $decision = T 'ALLOWED (no data)' 'PERMITIDO (sin datos)'
+        $row.Decision = T 'ALLOWED (no data)' 'PERMITIDO (sin datos)'
     } else {
-        $decision = T 'BLOCKED' 'BLOQUEADO'
+        $row.Decision = $blockedLabel
     }
-    $row | Add-Member -NotePropertyName Decision -NotePropertyValue $decision
-    $row | Add-Member -NotePropertyName Blocked -NotePropertyValue ($decision -eq (T 'BLOCKED' 'BLOQUEADO'))
+    $row.Blocked = ($row.Decision -eq $blockedLabel)
 }
 
 Write-Host ''
@@ -592,7 +1064,7 @@ $oldRules = Get-ToolRules
 
 $keepText = ($close | ForEach-Object { "$($_.Provider) $($_.Region) ($($_.Location), $($_.Ping) ms)" }) -join '; '
 $description = "$RuleTag v$ToolVersion on $(Get-Date -Format 'yyyy-MM-dd HH:mm'). " +
-               "MaxPing=$MaxPing MaxServers=$MaxServers MinServers=$MinServers. Kept: $keepText"
+               "Mode=$Mode MaxPing=$MaxPing MaxServers=$MaxServers MinServers=$MinServers. Kept: $keepText"
 
 $newNames = New-Object System.Collections.Generic.List[string]
 try {

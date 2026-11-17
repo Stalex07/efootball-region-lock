@@ -34,6 +34,8 @@
 - [Cómo funciona](#cómo-funciona)
 - [Tutorial paso a paso](#tutorial-paso-a-paso)
 - [Qué esperar](#qué-esperar)
+- [Herramientas de partido](#herramientas-de-partido)
+- [¿Es seguro?](#es-seguro)
 - [Qué nunca se bloquea](#qué-nunca-se-bloquea)
 - [Línea de comandos](#línea-de-comandos)
 - [Limitaciones conocidas](#limitaciones-conocidas)
@@ -121,12 +123,21 @@ Haz doble clic en **`Run.bat`**. Windows te pide permiso de administrador: pulsa
           '--....--'         Powered by @mrstalex
   ---------------------------------------------------------------
 
+  SERVERS / SERVIDORES
   1. Simulate (measure only, change nothing)  / Simular
   2. Apply (max 100 ms, 4 servers)            / Aplicar
   3. Apply with custom settings               / Aplicar personalizado
-  4. Status                                   / Estado
-  5. Remove all rules                         / Quitar todo
-  6. Exit                                     / Salir
+  4. Choose regions by hand                   / Elegir regiones a mano
+
+  DURING A MATCH / DURANTE UN PARTIDO
+  5. Check current match server               / Revisar partido actual
+  6. Live monitor (ping, jitter, loss)        / Monitor en vivo
+
+  OTHER / OTROS
+  7. Match history                            / Historial de partidos
+  8. Status                                   / Estado
+  9. Remove all rules                         / Quitar todo
+  0. Exit                                     / Salir
 ```
 
 > Si Windows muestra "Windows protegió su PC", es porque el archivo no tiene firma digital y se descargó de internet. Continúa (**Más información** → **Ejecutar de todas formas**) solo si lo descargaste desde la página de Releases de este repositorio, idealmente después de comprobar su SHA-256. También puedes abrir `eFootball-RegionLock.ps1` con el Bloc de notas y leer cada línea antes.
@@ -147,18 +158,19 @@ Servidores de partido que se mantienen:
 Regiones a bloquear: 72  |  Rangos de IP: 3966
 ```
 
-### 4. Aplicar (opción 2 o 3)
+### 4. Aplicar (opción 2, 3 o 4)
 
 - **2** mantiene las regiones con menos de **100 ms**, máximo **4**.
 - **3** te pide los límites, por ejemplo **80** ms y **3** servidores. Solo acepta números enteros dentro del rango permitido.
+- **4** te deja elegir las regiones tú mismo. La sugerencia automática viene marcada; escribe los números de las regiones que quieras activar o desactivar (por ejemplo `3 7 12`) y pulsa Enter cuando termines.
 
 La herramienta vuelve a medir, muestra la tabla y pide confirmación. Escribe **S** y pulsa Enter. Cuando diga **Listo**, los servidores lejanos quedan bloqueados.
 
 ### 5. Jugar y comprobar
 
-Juega unos partidos. La opción **4. Estado** te muestra las reglas activas en cualquier momento.
+Juega unos partidos. Durante un partido puedes usar las [herramientas de partido](#herramientas-de-partido) (opciones **5** y **6**) para ver en qué servidor te tocó y qué tan buena es la conexión. La opción **8. Estado** te muestra las reglas activas en cualquier momento.
 
-Si te salen errores de conexión o tarda mucho más de lo normal en emparejar, abre el menú y elige **5. Quitar todo**. Todo vuelve a la normalidad al instante.
+Si te salen errores de conexión o tarda mucho más de lo normal en emparejar, abre el menú y elige **9. Quitar todo**. Todo vuelve a la normalidad al instante.
 
 ## Qué esperar
 
@@ -177,6 +189,53 @@ Revisa tu lado antes de culpar al rival:
 - [ ] Sin descargas, actualizaciones ni streaming de video en tu red mientras juegas
 - [ ] Navegador y launchers cerrados o sin actividad
 
+## Herramientas de partido
+
+Úsalas **mientras se juega un partido** (no en los menús). Sal del juego con Alt+Tab, elige la opción y vuelve.
+
+| Opción | Qué muestra |
+|---|---|
+| **5. Revisar partido actual** | En qué servidor se juega el partido: nube (Google o Amazon), región y ciudad, más **ping, jitter, pérdida de paquetes** y una calificación de calidad. Si la dirección no está en las listas de Google ni de Amazon, te avisa de que el partido probablemente es **peer-to-peer** (directo con el otro jugador). |
+| **6. Monitor en vivo** | Encuentra el servidor del partido y muestra una línea que se actualiza cada segundo con ping, mediana, jitter, pérdida y calidad. Pulsa cualquier tecla para parar. |
+| **7. Historial de partidos** | Cada revisión y cada sesión del monitor se guardan en tu PC, para que con el tiempo veas qué servidores te dan mejores partidos. |
+
+Ejemplo:
+
+```text
+  Partido actual
+  ----------------------------------------
+  Tipo       : Servidor de juego
+  Nube       : Google Cloud
+  Region     : southamerica-west1 (Santiago)
+  Ping       : 33 ms   Jitter: 1 ms   Perdida: 0%
+  Calidad    : Buena
+```
+
+Cómo encuentra el partido: le pregunta a Windows qué puertos de red tiene abiertos eFootball, y usa **pktmon**, el monitor de paquetes que viene con Windows, para mirar unos segundos de **cabeceras de paquetes** en esos puertos. El partido es la dirección con tráfico constante en ambos sentidos. Después busca esa dirección en las listas oficiales de Google y Amazon, y le hace un `ping` normal para medir la conexión.
+
+El historial se guarda en `%LOCALAPPDATA%\eFootball Region Lock\match-history.csv`. Guarda la fecha, la región del servidor, el ping, el jitter, la pérdida y la calidad. **Nunca guarda la IP de tu rival.**
+
+## ¿Es seguro?
+
+**Nunca toca el juego.** Todas las opciones usan solo herramientas normales de Windows:
+
+| Opción | Qué hace en realidad | ¿Toca el juego? |
+|---|---|---|
+| Simular / Aplicar / Elegir a mano | Mide la latencia a puntos públicos de la nube y añade reglas normales del **Firewall de Windows** | No |
+| Revisar partido actual | Usa **pktmon** (viene con Windows) para leer una **copia** de las cabeceras de los paquetes: qué dirección habla con cuál. Nunca el contenido | No |
+| Monitor en vivo | Hace un **ping** normal, igual que escribir `ping` en CMD | No |
+| Historial de partidos | Escribe un archivo de texto (CSV) en tu PC | No |
+
+**Lo que nunca hace:**
+
+- Nunca abre, lee ni cambia los **archivos del juego**.
+- Nunca lee ni escribe la **memoria** del juego (que es lo que buscan los sistemas anticheat).
+- Nunca **inyecta** nada en el juego.
+- Nunca **cambia, retrasa ni bloquea** paquetes del partido. Las herramientas de partido solo observan.
+- Nunca envía tus datos a ningún sitio. El único tráfico de red es la descarga de las listas oficiales de IP, las mediciones de latencia y los pings.
+
+**¿Me pueden banear?** Los sistemas anticheat buscan programas que se meten **dentro** del juego: leen su memoria, inyectan código o alteran lo que envía. Esta herramienta no hace nada de eso. Funciona como el Monitor de recursos o un `ping`. El riesgo es muy bajo, pero nadie puede prometer un 0%: Konami no publica qué revisa su anticheat, y sus términos ni permiten ni prohíben estas herramientas de forma explícita.
+
 ## Qué nunca se bloquea
 
 | Qué | Por qué |
@@ -189,7 +248,7 @@ Revisa tu lado antes de culpar al rival:
 
 ## Línea de comandos
 
-Ejecútalos en PowerShell **como administrador**, dentro de la carpeta de la herramienta. `DryRun` y `Status` también funcionan sin permisos de administrador.
+Ejecútalos en PowerShell **como administrador**, dentro de la carpeta de la herramienta. `DryRun`, `Status` y `History` también funcionan sin permisos de administrador.
 
 ```powershell
 # Simulación: mide y muestra, no cambia nada
@@ -197,6 +256,16 @@ Ejecútalos en PowerShell **como administrador**, dentro de la carpeta de la her
 
 # Aplicar: regiones con menos de 80 ms, máximo 3
 .\eFootball-RegionLock.ps1 -MaxPing 80 -MaxServers 3
+
+# Elegir las regiones a mano
+.\eFootball-RegionLock.ps1 -Mode Pick
+
+# Durante un partido: revisar el servidor o monitorearlo en vivo
+.\eFootball-RegionLock.ps1 -Mode Match
+.\eFootball-RegionLock.ps1 -Mode Monitor
+
+# Partidos guardados
+.\eFootball-RegionLock.ps1 -Mode History
 
 # No bloquear nunca una región concreta
 .\eFootball-RegionLock.ps1 -AlwaysAllow southamerica-east1
@@ -211,7 +280,7 @@ Ejecútalos en PowerShell **como administrador**, dentro de la carpeta de la her
 
 | Parámetro | Por defecto | Qué hace |
 |---|---|---|
-| `-Mode` | `Apply` | `Apply`, `DryRun`, `Remove` o `Status` |
+| `-Mode` | `Apply` | `Apply`, `DryRun`, `Pick`, `Match`, `Monitor`, `History`, `Remove` o `Status` |
 | `-MaxPing` | `100` | Latencia estimada máxima (ms) que puede tener una región para seguir permitida |
 | `-MaxServers` | `4` | Mantener como máximo estas regiones. `0` = sin límite |
 | `-MinServers` | `2` | Mantener siempre al menos estas regiones |
@@ -219,6 +288,7 @@ Ejecútalos en PowerShell **como administrador**, dentro de la carpeta de la her
 | `-GamePath` | automático | Ruta(s) a `eFootball.exe` |
 | `-Lang` | `auto` | Idioma: `auto`, `en` o `es` |
 | `-AskSettings` | no | Pedir `-MaxPing` y `-MaxServers` en pantalla (solo números enteros) |
+| `-CaptureSeconds` | `6` | Revisar / Monitor: segundos de cabeceras de tráfico a observar (3-30) |
 | `-Yes` | no | No pedir confirmación |
 
 ## Limitaciones conocidas
@@ -231,11 +301,12 @@ Ejecútalos en PowerShell **como administrador**, dentro de la carpeta de la her
 - **IPv6:** también se bloquean los rangos IPv6, pero todavía no se ha probado en una conexión real solo IPv6.
 - **La versión de Microsoft Store / app de Xbox es experimental.** La herramienta busca el juego en las carpetas `XboxGames` y además crea una regla ligada al paquete de la Store. Se agradecen los comentarios.
 - **Vuelve a ejecutarlo cada pocas semanas.** Google y Amazon agregan rangos de IP nuevos. Aplicar otra vez reemplaza las reglas anteriores.
+- **Herramientas de partido:** necesitan Windows 10 versión 2004 o superior y permisos de administrador. Algunos servidores ignoran el ping, así que puede salir "sin respuesta". Las direcciones edge de Amazon (`166.117.x.x`) son anycast, así que no se puede mostrar su ciudad exacta. "Peer-to-peer" significa que la dirección no está en las listas de Google ni de Amazon: normalmente es el otro jugador, pero podría ser otro proveedor. Solo observan tráfico IPv4.
 - Konami no explica cómo elige los servidores, y sus términos ni permiten ni prohíben reglas de firewall en tu propio PC.
 
 ## Desinstalar
 
-Abre `Run.bat` → **5. Quitar todo**, o ejecuta como administrador:
+Abre `Run.bat` → **9. Quitar todo**, o ejecuta como administrador:
 
 ```powershell
 Remove-NetFirewallRule -Group "eFootball Region Lock"
@@ -243,10 +314,12 @@ Remove-NetFirewallRule -Group "eFootball Region Lock"
 
 Todas las reglas están en el grupo de firewall `eFootball Region Lock`. La opción del menú solo borra las reglas que llevan el nombre y la descripción propios de la herramienta, así que nunca toca reglas creadas por otra persona.
 
+Para borrar también el historial de partidos, elimina la carpeta `%LOCALAPPDATA%\eFootball Region Lock`.
+
 ## Preguntas frecuentes
 
 **¿Me pueden banear por esto?**
-No toca los archivos del juego, ni su memoria, ni el contenido de su tráfico. Solo añade reglas normales del Firewall de Windows. No conocemos ningún caso de sanción por esto, pero los términos de Konami no lo mencionan de forma explícita.
+No toca los archivos del juego, ni su memoria, ni el contenido de su tráfico: solo usa el Firewall de Windows, pktmon y ping. El riesgo es muy bajo, pero los términos de Konami no mencionan estas herramientas de forma explícita. Mira [¿Es seguro?](#es-seguro) para más detalles.
 
 **Igual me tocó un rival lejano.**
 La herramienta no puede elegir a tu rival, solo qué servidores puede usar el partido. El juego puede emparejarte con alguien lejos y usar un servidor intermedio.

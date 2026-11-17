@@ -34,6 +34,8 @@
 - [How it works](#how-it-works)
 - [Step-by-step tutorial](#step-by-step-tutorial)
 - [What to expect](#what-to-expect)
+- [Match tools](#match-tools)
+- [Is it safe?](#is-it-safe)
 - [What is never blocked](#what-is-never-blocked)
 - [Command line](#command-line)
 - [Known limitations](#known-limitations)
@@ -121,12 +123,21 @@ Double-click **`Run.bat`**. Windows asks for administrator permission: click **Y
           '--....--'         Powered by @mrstalex
   ---------------------------------------------------------------
 
+  SERVERS / SERVIDORES
   1. Simulate (measure only, change nothing)  / Simular
   2. Apply (max 100 ms, 4 servers)            / Aplicar
   3. Apply with custom settings               / Aplicar personalizado
-  4. Status                                   / Estado
-  5. Remove all rules                         / Quitar todo
-  6. Exit                                     / Salir
+  4. Choose regions by hand                   / Elegir regiones a mano
+
+  DURING A MATCH / DURANTE UN PARTIDO
+  5. Check current match server               / Revisar partido actual
+  6. Live monitor (ping, jitter, loss)        / Monitor en vivo
+
+  OTHER / OTROS
+  7. Match history                            / Historial de partidos
+  8. Status                                   / Estado
+  9. Remove all rules                         / Quitar todo
+  0. Exit                                     / Salir
 ```
 
 > If Windows shows "Windows protected your PC", it is because the file is not digitally signed and was downloaded from the internet. Only continue (**More info** → **Run anyway**) if you downloaded it from this repository's Releases page, ideally after checking its SHA-256. You can also open `eFootball-RegionLock.ps1` with Notepad and read every line first.
@@ -147,18 +158,19 @@ Match servers you will keep:
 Regions to block: 72  |  IP ranges: 3966
 ```
 
-### 4. Apply (option 2 or 3)
+### 4. Apply (option 2, 3 or 4)
 
 - **2** keeps the regions under **100 ms**, at most **4**.
 - **3** asks you for the limits, for example **80** ms and **3** servers. Only whole numbers in the allowed range are accepted.
+- **4** lets you choose the regions yourself. The automatic suggestion comes pre-selected; type the numbers of the regions you want to switch on or off (for example `3 7 12`) and press Enter when you are done.
 
 The tool measures again, shows the table and asks for confirmation. Type **Y** (or **S**) and press Enter. When it says **Done**, the far servers are blocked.
 
 ### 5. Play and check
 
-Play a few matches. Option **4. Status** shows the active rules at any time.
+Play a few matches. During a match you can use the [match tools](#match-tools) (options **5** and **6**) to see which server you got and how good the connection is. Option **8. Status** shows the active rules at any time.
 
-If you get connection errors or matchmaking takes much longer than usual, open the menu and choose **5. Remove all rules**. Everything goes back to normal immediately.
+If you get connection errors or matchmaking takes much longer than usual, open the menu and choose **9. Remove all rules**. Everything goes back to normal immediately.
 
 ## What to expect
 
@@ -177,6 +189,53 @@ Quick check of your side before blaming the opponent:
 - [ ] No downloads, updates or video streaming on your network while playing
 - [ ] Browser and launchers closed or idle
 
+## Match tools
+
+Use these **while a match is being played** (not in the menus). Alt+Tab out of the game, pick the option, then go back.
+
+| Option | What it shows |
+|---|---|
+| **5. Check current match server** | Which server the match is using: cloud (Google or Amazon), region and city, plus **ping, jitter, packet loss** and a quality rating. If the address is not in the Google or Amazon lists, it tells you the match is probably **peer-to-peer** (directly with the other player). |
+| **6. Live monitor** | Finds the match server, then shows one line that updates every second with ping, median, jitter, loss and quality. Press any key to stop. |
+| **7. Match history** | Every check and monitor session is saved on your PC, so over time you can see which servers give you the best matches. |
+
+Example:
+
+```text
+  Current match
+  ----------------------------------------
+  Type       : Game server
+  Cloud      : Google Cloud
+  Region     : southamerica-west1 (Santiago)
+  Ping       : 33 ms   Jitter: 1 ms   Loss: 0%
+  Quality    : Good
+```
+
+How it finds the match: it asks Windows which network ports eFootball has open, then uses **pktmon**, the packet monitor built into Windows, to look at a few seconds of **packet headers** on those ports. The match is the address with steady two-way traffic. The address is then looked up in the official Google and Amazon lists, and pinged with a normal `ping` to measure the connection.
+
+The history is saved in `%LOCALAPPDATA%\eFootball Region Lock\match-history.csv`. It stores the date, server region, ping, jitter, loss and quality. **It never saves your opponent's IP address.**
+
+## Is it safe?
+
+**It never touches the game.** Every option only uses standard Windows tools:
+
+| Option | What it really does | Touches the game? |
+|---|---|---|
+| Simulate / Apply / Choose by hand | Measures latency to public cloud endpoints and adds standard **Windows Firewall** rules | No |
+| Check current match | Uses **pktmon** (built into Windows) to read a **copy** of packet headers: which address talks to which. Never the content | No |
+| Live monitor | Sends a normal **ping**, the same as typing `ping` in CMD | No |
+| Match history | Writes a text file (CSV) on your PC | No |
+
+**What it never does:**
+
+- Never opens, reads or changes the **game files**.
+- Never reads or writes the game's **memory** (what anti-cheat systems look for).
+- Never **injects** anything into the game.
+- Never **changes, delays or drops** match packets. The match tools only observe.
+- Never sends your data anywhere. The only network traffic is downloading the official IP lists, the latency probes and the pings.
+
+**Can it get you banned?** Anti-cheat systems look for programs that get **inside** the game: reading its memory, injecting code or altering what it sends. This tool does none of that. It works like Resource Monitor or a `ping`. The risk is very low, but nobody can promise 0%: Konami does not publish what its anti-cheat checks, and its terms neither allow nor forbid these tools explicitly.
+
 ## What is never blocked
 
 | What | Why |
@@ -189,7 +248,7 @@ Quick check of your side before blaming the opponent:
 
 ## Command line
 
-Run these from an **administrator** PowerShell in the tool's folder. `DryRun` and `Status` also work without admin rights.
+Run these from an **administrator** PowerShell in the tool's folder. `DryRun`, `Status` and `History` also work without admin rights.
 
 ```powershell
 # Simulation: measure and show, change nothing
@@ -197,6 +256,16 @@ Run these from an **administrator** PowerShell in the tool's folder. `DryRun` an
 
 # Apply: regions under 80 ms, at most 3
 .\eFootball-RegionLock.ps1 -MaxPing 80 -MaxServers 3
+
+# Choose the regions by hand
+.\eFootball-RegionLock.ps1 -Mode Pick
+
+# During a match: check the server, or monitor it live
+.\eFootball-RegionLock.ps1 -Mode Match
+.\eFootball-RegionLock.ps1 -Mode Monitor
+
+# Saved matches
+.\eFootball-RegionLock.ps1 -Mode History
 
 # Never block a specific region
 .\eFootball-RegionLock.ps1 -AlwaysAllow southamerica-east1
@@ -211,7 +280,7 @@ Run these from an **administrator** PowerShell in the tool's folder. `DryRun` an
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `-Mode` | `Apply` | `Apply`, `DryRun`, `Remove` or `Status` |
+| `-Mode` | `Apply` | `Apply`, `DryRun`, `Pick`, `Match`, `Monitor`, `History`, `Remove` or `Status` |
 | `-MaxPing` | `100` | Highest estimated latency (ms) a region may have to stay allowed |
 | `-MaxServers` | `4` | Keep at most this many regions. `0` = no limit |
 | `-MinServers` | `2` | Always keep at least this many regions |
@@ -219,6 +288,7 @@ Run these from an **administrator** PowerShell in the tool's folder. `DryRun` an
 | `-GamePath` | auto | Path(s) to `eFootball.exe` |
 | `-Lang` | `auto` | Output language: `auto`, `en` or `es` |
 | `-AskSettings` | off | Ask for `-MaxPing` and `-MaxServers` on screen (whole numbers only) |
+| `-CaptureSeconds` | `6` | Match / Monitor: seconds of traffic headers to look at (3-30) |
 | `-Yes` | off | Skip the confirmation prompt |
 
 ## Known limitations
@@ -231,11 +301,12 @@ Run these from an **administrator** PowerShell in the tool's folder. `DryRun` an
 - **IPv6:** IPv6 ranges are blocked too, but the tool has not yet been tested on a real IPv6-only connection.
 - **Microsoft Store / Xbox app version is experimental.** The tool looks for the game in the `XboxGames` folders and also adds a rule bound to the Store package. Feedback is welcome.
 - **Re-run it every few weeks.** Google and Amazon add new IP ranges over time. Applying again replaces the previous rules.
+- **Match tools:** they need Windows 10 version 2004 or newer and administrator rights. Some servers ignore ping, so the card can show "no reply". Amazon edge addresses (`166.117.x.x`) are anycast, so their exact city cannot be shown. "Peer-to-peer" means the address is not in the Google or Amazon lists: usually the other player, but it could also be another provider. The tools look at IPv4 traffic only.
 - Konami does not document how server selection works, and its terms neither allow nor forbid firewall rules on your own PC.
 
 ## Uninstall
 
-Open `Run.bat` → **5. Remove all rules**, or run as administrator:
+Open `Run.bat` → **9. Remove all rules**, or run as administrator:
 
 ```powershell
 Remove-NetFirewallRule -Group "eFootball Region Lock"
@@ -243,10 +314,12 @@ Remove-NetFirewallRule -Group "eFootball Region Lock"
 
 Every rule belongs to the firewall group `eFootball Region Lock`. The menu option only removes rules that carry the tool's own name and description, so rules created by anyone else are never touched.
 
+To also delete the match history, remove the folder `%LOCALAPPDATA%\eFootball Region Lock`.
+
 ## FAQ
 
 **Will this get me banned?**
-It does not touch the game files, memory or traffic contents. It only adds standard Windows Firewall rules. We are not aware of anyone being sanctioned for this, but Konami's terms do not mention it explicitly.
+It does not touch the game files, memory or traffic contents: it only uses Windows Firewall, pktmon and ping. The risk is very low, but Konami's terms do not mention these tools explicitly. See [Is it safe?](#is-it-safe) for the details.
 
 **I still got a far opponent.**
 The tool cannot choose your opponent, only which servers the match can use. The game may still pair you with someone far away and use a server in between.
