@@ -162,7 +162,58 @@ function Find-GameExe {
         }
     }
 
+    # Xbox app / Microsoft Store: the default "XboxGames" folder on every local drive,
+    # plus the package install folder when Windows lets us read it.
+    $storeDirs = @()
+    foreach ($drive in [IO.DriveInfo]::GetDrives()) {
+        if ($drive.DriveType -ne 'Fixed' -or -not $drive.IsReady) { continue }
+        $xg = Join-Path $drive.RootDirectory.FullName 'XboxGames'
+        if (Test-Path -LiteralPath $xg) {
+            $storeDirs += @(Get-ChildItem -LiteralPath $xg -Directory -Filter '*eFootball*' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        }
+    }
+    foreach ($pkg in @(Get-AppxPackage -Name '*eFootball*' -ErrorAction SilentlyContinue)) {
+        if ($pkg.InstallLocation) { $storeDirs += $pkg.InstallLocation }
+    }
+    foreach ($dir in ($storeDirs | Sort-Object -Unique)) {
+        $exe = Get-ChildItem -LiteralPath $dir -Recurse -Filter 'eFootball*.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Length -gt 50MB } | Select-Object -First 1
+        if ($exe) { $found.Add($exe.FullName) }
+    }
+
     @($found | Sort-Object -Unique)
+}
+
+function Get-AppContainerSid([string]$FamilyName) {
+    if (-not ('RegionLock.UserEnv' -as [type])) {
+        Add-Type -Namespace RegionLock -Name UserEnv -MemberDefinition @'
+[DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+public static extern int DeriveAppContainerSidFromAppContainerName(string name, out IntPtr sid);
+[DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern bool ConvertSidToStringSid(IntPtr sid, out string sidString);
+[DllImport("advapi32.dll")]
+public static extern IntPtr FreeSid(IntPtr sid);
+'@
+    }
+    $ptr = [IntPtr]::Zero
+    if ([RegionLock.UserEnv]::DeriveAppContainerSidFromAppContainerName($FamilyName, [ref]$ptr) -ne 0) { return $null }
+    try {
+        $sidString = $null
+        if ([RegionLock.UserEnv]::ConvertSidToStringSid($ptr, [ref]$sidString)) { $sidString } else { $null }
+    } finally {
+        [void][RegionLock.UserEnv]::FreeSid($ptr)
+    }
+}
+
+function Find-GamePackages {
+    # Microsoft Store packages get an extra rule bound to the package identity,
+    # which matches the game even when its install folder cannot be read.
+    $list = @()
+    foreach ($pkg in @(Get-AppxPackage -Name '*eFootball*' -ErrorAction SilentlyContinue)) {
+        $sid = Get-AppContainerSid $pkg.PackageFamilyName
+        if ($sid) { $list += [pscustomobject]@{ Name = $pkg.PackageFamilyName; Sid = $sid } }
+    }
+    $list
 }
 
 function Measure-Http([System.Net.Http.HttpClient]$Client, [string]$Url, [int]$Samples = 4) {
@@ -265,15 +316,22 @@ if ($GamePath) {
 } else {
     $exes = @(Find-GameExe)
 }
+$packages = @()
+if (-not $GamePath) { $packages = @(Find-GamePackages) }
 
-if ($exes.Count -eq 0) {
-    Say 'eFootball.exe was not found automatically (Steam / Epic).' 'No se encontro eFootball.exe automaticamente (Steam / Epic).' 'Yellow'
+if ($exes.Count -eq 0 -and $packages.Count -eq 0) {
+    Say 'eFootball was not found automatically (Steam / Epic / Microsoft Store).' 'No se encontro eFootball automaticamente (Steam / Epic / Microsoft Store).' 'Yellow'
     Say 'Run again with: -GamePath "C:\path\to\eFootball.exe"' 'Vuelve a ejecutarlo con: -GamePath "C:\ruta\a\eFootball.exe"' 'Yellow'
     if ($Mode -eq 'Apply') { exit 1 }
 } else {
     Say 'Game found:' 'Juego encontrado:'
     $exes | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
+    $packages | ForEach-Object { Write-Host ("  Microsoft Store: {0}" -f $_.Name) -ForegroundColor Green }
 }
+
+$targets = @()
+$targets += @($exes | ForEach-Object { @{ Program = $_ } })
+$targets += @($packages | ForEach-Object { @{ Package = $_.Sid } })
 Write-Host ''
 
 # --- official IP lists + probe list
@@ -424,13 +482,13 @@ $description = "Created by eFootball Region Lock v$ToolVersion on $(Get-Date -Fo
                "MaxPing=$MaxPing MaxServers=$MaxServers MinServers=$MinServers. Kept: $keepText"
 
 $created = 0
-foreach ($exe in $exes) {
+foreach ($target in $targets) {
     $part = 0
     for ($i = 0; $i -lt $rangeList.Count; $i += $ChunkSize) {
         $part++
         $chunk = $rangeList[$i..([Math]::Min($i + $ChunkSize - 1, $rangeList.Count - 1))]
         New-NetFirewallRule -DisplayName "$RuleGroup #$part" -Group $RuleGroup -Description $description `
-            -Direction Outbound -Action Block -Program $exe -Protocol UDP -RemoteAddress $chunk | Out-Null
+            -Direction Outbound -Action Block -Protocol UDP -RemoteAddress $chunk @target | Out-Null
         $created++
     }
 }
