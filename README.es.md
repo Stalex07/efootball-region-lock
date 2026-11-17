@@ -28,6 +28,7 @@
 - [El problema](#el-problema)
 - [Cómo funciona](#cómo-funciona)
 - [Tutorial paso a paso](#tutorial-paso-a-paso)
+- [Qué esperar](#qué-esperar)
 - [Qué nunca se bloquea](#qué-nunca-se-bloquea)
 - [Línea de comandos](#línea-de-comandos)
 - [Ten en cuenta](#ten-en-cuenta)
@@ -121,6 +122,23 @@ La herramienta vuelve a medir, muestra la tabla y pide confirmación. Escribe **
 Juega unos partidos. La opción **4. Estado** te muestra las reglas activas en cualquier momento.
 
 Si te salen errores de conexión o tarda mucho más de lo normal en emparejar, abre el menú y elige **5. Quitar todo**. Todo vuelve a la normalidad al instante.
+
+## Qué esperar
+
+> [!IMPORTANT]
+> **Juega con conexión por cable (Ethernet).** Es la mejora más grande que puedes hacer: el Wi-Fi añade picos de retraso y pérdida de paquetes que ninguna herramienta puede arreglar.
+
+**Lo que la herramienta garantiza:** todas las regiones de servidores de Google Cloud y Amazon que superan tu límite de ping quedan bloqueadas para eFootball (salvo las pocas que aparecen en [Qué nunca se bloquea](#qué-nunca-se-bloquea)). Tus partidos ya no se pueden jugar en un servidor de otro continente, aunque tu rival esté lejos.
+
+**Lo que no puede controlar:** quién es tu rival y qué tan buena es su conexión.
+
+**Por eso, si un partido sigue con lag o se desconecta** estando tú por cable, sin nadie en casa descargando o viendo streaming, y en un servidor cercano, **lo más probable es que la causa sea la conexión de tu rival** (Wi-Fi malo, descargas en su red, mala señal).
+
+Revisa tu lado antes de culpar al rival:
+
+- [ ] Conectado por cable Ethernet, no por Wi-Fi
+- [ ] Sin descargas, actualizaciones ni streaming de video en tu red mientras juegas
+- [ ] Navegador y launchers cerrados o sin actividad
 
 ## Qué nunca se bloquea
 

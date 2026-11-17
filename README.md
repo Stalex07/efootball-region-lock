@@ -28,6 +28,7 @@
 - [The problem](#the-problem)
 - [How it works](#how-it-works)
 - [Step-by-step tutorial](#step-by-step-tutorial)
+- [What to expect](#what-to-expect)
 - [What is never blocked](#what-is-never-blocked)
 - [Command line](#command-line)
 - [Things to know](#things-to-know)
@@ -121,6 +122,23 @@ The tool measures again, shows the table and asks for confirmation. Type **Y** (
 Play a few matches. Option **4. Status** shows the active rules at any time.
 
 If you get connection errors or matchmaking takes much longer than usual, open the menu and choose **5. Remove all rules**. Everything goes back to normal immediately.
+
+## What to expect
+
+> [!IMPORTANT]
+> **Play on a wired (Ethernet) connection.** It is the single biggest improvement you can make: Wi-Fi adds delay spikes and packet loss that no tool can fix.
+
+**What the tool guarantees:** every Google Cloud and Amazon server region above your ping limit is blocked for eFootball (except the few listed in [What is never blocked](#what-is-never-blocked)). Your matches can no longer be played on a server on another continent, even when your opponent is far away.
+
+**What it cannot control:** who your opponent is and how good their connection is.
+
+**So if a match still lags or disconnects** while you are on cable, nobody at home is downloading or streaming, and the match is on a nearby server, **the cause is very likely your opponent's connection** (bad Wi-Fi, downloads on their network, weak signal).
+
+Quick check of your side before blaming the opponent:
+
+- [ ] Connected by Ethernet cable, not Wi-Fi
+- [ ] No downloads, updates or video streaming on your network while playing
+- [ ] Browser and launchers closed or idle
 
 ## What is never blocked
 
